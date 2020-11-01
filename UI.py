@@ -44,7 +44,7 @@ root.tk.call('package', 'require', 'awdark')
 ttk.Style().theme_use('awdark')
 
 root.title("OpenCL Raytracer")
-i=10
+i=0
 #-----------------------------
 #Layout Setup
 #-----------------------------
