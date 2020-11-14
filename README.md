@@ -11,7 +11,12 @@ Technologies: PyOpenCL, Tkinter
 I plan to implement :
 
 -Diffuse, Glossy and Transparent materials
+
 -BVH acceleration structure
+
 -texture (UV Mapping)
+
 -material system editing in UI 
+
 -Image based lighting
+
