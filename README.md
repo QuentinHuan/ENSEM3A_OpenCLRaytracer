@@ -1,2 +1,22 @@
 # ENSEM3A_OpenCLRaytracer
 3rd year project : GPU accelerated raytracing engine
+
+This is a retake on my previous project: https://github.com/QuentinHuan/FSCppRaytracer
+Last version was more of a prototype and wasn't really usable in practice. The goal here is to make a usable piece of software, with a UI.
+
+Technologies: PyOpenCL, Tkinter
+
+![alt text](https://i.imgur.com/lKogRMY.png)
+
+I plan to implement :
+
+-Diffuse, Glossy and Transparent materials
+
+-BVH acceleration structure
+
+-texture (UV Mapping)
+
+-material system editing in UI 
+
+-Image based lighting
+
