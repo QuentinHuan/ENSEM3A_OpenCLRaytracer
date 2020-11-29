@@ -49,7 +49,7 @@ static float3 rotateVec(float angle, float3 axis, float3 vector)
     float4 q = (float4)(cos(angle *0.5f), normalize(axis) * sin(angle *0.5f));
     float4 V = (float4)(0, vector);
 
-    float4 qinv = (float4)(q.x, q.yzw*(-1.0f)) * (q.x*q.x + dot(q.yzw, q.yzw));
+    float4 qinv = normalize((float4)(q.x, q.yzw*(-1.0f)) * (q.x*q.x + dot(q.yzw, q.yzw)));
 
     return (quaternion_mult(quaternion_mult(q,V), qinv)).yzw;
 }
@@ -86,13 +86,16 @@ static float rand(unsigned int *seed0, unsigned int *seed1) {
 		const float y = r * sin(theta);
 		float3 localV = (float3)(x, y, sqrt(fmax(0.0f, 1.0f - u)));
 		float3 l;
-		float3 axis = cross((float3)(0, 0, 1), dir);
-		if (dir.x == 0.0f && dir.y == 0.0f && dir.z == 0.0f)
+
+        float colinear = fabs(dot(normalize(dir),(float3)(0.0f, 0.0f, 1.0f)));
+        if (colinear == 1.0f)
         {
-            l = normalize(localV);
+            //printf("norm");
+            l = localV*dir.z;
         }
 		else
 		{
+            float3 axis = cross((float3)(0, 0, 1), dir);
             float rotAngle = acos(dot(dir, (float3)(0, 0, 1)));
             l = normalize(rotateVec(rotAngle, axis, localV));
 		}
@@ -102,24 +105,27 @@ static float rand(unsigned int *seed0, unsigned int *seed1) {
 
  static float3 rand_hemi_uniform(float3 dir, unsigned int *seed0, unsigned int *seed1, float *invPdf)
 {
-    float theta0=2.0f*3.14f*(rand(seed0,seed1));
-    float theta1 = acos(1.0f-2.0f*rand(seed0,seed1));
-    float3 localV = (float3)(sin(theta0)*sin(theta1), sin(theta0)*cos(theta1),sin(theta1));
+    float phi = 2.0f*3.14f*(rand(seed0,seed1));
+    float theta = acos(1.0f-(rand(seed0,seed1)));
+    float3 localV = (float3)(cos(phi)*sin(theta), sin(theta)*sin(phi),cos(theta));
     
     float3 worldV;
-    float3 axis = cross((float3)(0.0f, 0.0f, 1.0f), dir);
-    if (dir.x == 0.0f && dir.y == 0.0f && dir.z == 0.0f)
+    float colinear = fabs(dot(normalize(dir),(float3)(0.0f, 0.0f, 1.0f)));
+    if (colinear == 1.0f)
     {
-        worldV = localV;
+        //printf("norm");
+        worldV = localV*dir.z;
     }
     else
     {
-        float rotAngle = acos(dot(dir, (float3)(0, 0, 1)));
+        float3 axis = normalize(cross((float3)(0.0f, 0.0f, 1.0f), dir));
+        float rotAngle = acos(dot(dir, (float3)(0, 0, 1.0f)));
+        //worldV = dir;
         worldV = rotateVec(rotAngle, axis, localV);
         //printf("x %f y %f z %f",worldV.x,worldV.y,worldV.z);
     }
 
-    *invPdf = 2*3.14;
+    *invPdf = 2.0f*3.14f;
     return normalize(worldV);
 } 
 
@@ -132,7 +138,7 @@ static float rand(unsigned int *seed0, unsigned int *seed1) {
 hitInfo intersect(tri T, ray r)
 {
     const float EPSILON = 0.0000001;
-    const float maxDist = 1000.0f;
+    float maxDist = 1000.0f;
 
     hitInfo output;
     output.bHit = false;
@@ -215,7 +221,7 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
         }
     } 
 
-    if(H.k < 0.0f)
+    if(H.k <= 0.0f)
     {
         H.bHit = false;
         H.k = 0.0f;

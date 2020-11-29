@@ -29,7 +29,7 @@ def main(scene):
     #         settings
     # --------------------------#
     imgResolution = 512
-    spp = 10
+    spp = 1000
 
     #--------------------------------#
     #         host buffers
