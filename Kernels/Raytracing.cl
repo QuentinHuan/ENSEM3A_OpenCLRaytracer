@@ -28,7 +28,10 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                          __constant float *vertex_uv, __constant int *face_data,
                          __global float *mat, __global float *cam,
                          const int triCount, const int imgSize,
-                         const int maxSpp, const int matCount) {
+                         const int maxSpp, const int maxBounce) {
+    //--------------
+    //initialise
+    //--------------
   int i = get_global_id(0);
   float3 output = (float3)(0.0f);
   unsigned int seed0 = i % imgSize; /* x-coordinate of the pixel */
@@ -38,6 +41,8 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
   int spp = 0;
 
   float epsilon = 0.00001f;
+
+  float3 backgroundColor = (float3)(0.1f);
   //-----------------
   // Ray construction
   //-----------------
@@ -58,30 +63,28 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
   r.o = position;
   r.dir = normalize((position + pixelCoord) - focal);
 
+  // fire cam ray
+  hitInfo H_cam_cache = rayTrace(r, vertex_p, vertex_n, vertex_uv, face_data, triCount);
+  material camMat_cache = extractMaterial(mat, H_cam_cache.mat);
   //-----------------
   // Raytracing logic
   //-----------------
-  while (spp < maxSpp) // each sample
+  while (spp < maxSpp) // for each sample
   {
-    ray R_cam = r;
-    // first camera Ray
     spp++;
+    // load first ray and result from cache
+    ray R_cam = r;
+    hitInfo H_cam = H_cam_cache;
+    material camMat = camMat_cache;
+
+    //sample out initialisation
     float3 sampleOut = (float3)(1.0f);
+    if (H_cam.bHit)sampleOut = camMat.color; // initialise with base color;
+    else sampleOut = backgroundColor; // initialise with background
 
-    // fire cam ray
-    hitInfo H_cam = rayTrace(R_cam, vertex_p, vertex_n, vertex_uv, face_data, triCount);
-    material camMat = extractMaterial(mat, H_cam.mat);
-
-    if (H_cam.bHit) 
-    {
-      sampleOut = camMat.color; // initialise with base color;
-    }
-    else 
-    {
-      sampleOut = (float3)(0.0f); // initialise with background
-    }
-
-    for (int j = 0; j < 2; j++) // max bounce limit
+    // camRay is the previous ray
+    // bounce ray the new ray that bounce of the surface
+    for (int j = 0; j <= maxBounce; j++) // max bounce limit
     {
         if (H_cam.bHit) 
         {
@@ -91,70 +94,69 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                 // next ray setup
                 float invPdfBounce;
                 ray R_bounce;
-                R_bounce.dir = rand_hemi_uniform(H_cam.n, &seed1, &seed0, &invPdfBounce);
-                R_bounce.o = (R_cam.o + (normalize(R_cam.dir)*H_cam.k)) + (normalize(H_cam.n) * epsilon);
-                //printVec( R_bounce.dir);
+
+                //sampling method selection depending on current surface's material
+                switch(camMat.type)
+                {
+                    case 0://emissive
+                        R_bounce.dir = rand_hemi_uniform(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        break;
+                    case 1://diffuse
+                        R_bounce.dir = rand_hemi_cosine(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        break;
+                    case 2://Glossy GGX
+                        R_bounce.dir = rand_hemi_uniform(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        break;
+                    case 3://Glass
+                        R_bounce.dir = rand_hemi_uniform(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        break;
+                }
+
+                R_bounce.o = (R_cam.o + (normalize(R_cam.dir) * H_cam.k)) + (normalize(H_cam.n) * epsilon);
+
                 // next ray shoot
-                hitInfo H_bounce = rayTrace(R_bounce, vertex_p, vertex_n, vertex_uv,face_data, triCount);
+                hitInfo H_bounce = rayTrace(R_bounce, vertex_p, vertex_n, vertex_uv, face_data, triCount);
                 material bounceMat = extractMaterial(mat, H_bounce.mat);
 
-                // next sampling calculation
+                // attenuation calculation
                 float att = invPdfBounce * dot(R_bounce.dir, normalize(H_cam.n)) * (1.0f / 3.14f);
 
-
-                if (H_bounce.bHit) // hit something
+                if (H_bounce.bHit) // hit something solid
                 {
+                    //swap bounce and cam ray
                     R_cam = R_bounce;
                     H_cam = H_bounce;
                     camMat = bounceMat;
-                    sampleOut = sampleOut*bounceMat.color * (att);
+                    //add bounce contribution
+                    sampleOut = sampleOut * bounceMat.color * (att);
                     if (bounceMat.type != 0) 
                     {
-                        if (j == 1) 
+                        //max bounce reach, sample is nullified
+                        if (j == maxBounce) 
                         {
-                            sampleOut = sampleOut*(float3)(0.0f);
+                            sampleOut = 0;
                             break;
                         }
                     } 
-                    else 
+                    else //emissive surface
                     {
-                        sampleOut = sampleOut*10.0f;
+                        sampleOut = sampleOut * 10.0f;
                         break;
                     }
                 } 
                 else // lost in background
                 {
-                    sampleOut = sampleOut*(float3)(0.1f);
+                    sampleOut = sampleOut*backgroundColor;
                     break;
                 }
-            }
-            else
-            {
-                break;
-            }
-        }
-        else
-        {
-            break;
-        }
+            } 
+            else break;
+        } 
+        else break;
     }
-
     output = output + sampleOut;
-
-    /*         //russian roulette
-             while(rand(seed0,seed1) < 1.0f/sampleOut.length)
-            {
-
-                hitInfo H =
-       rayTrace(r,vertex_p,vertex_n,vertex_uv,face_data,triCount); if (H.bHit)
-                {
-                    //(1-(H.k/2.0f))
-                    output = (float3)(mat[H.mat*matChunkSize +
-       1],mat[H.mat*matChunkSize + 2],mat[H.mat*matChunkSize +
-       3])*(1.0f-H.k/5.0f);
-                }
-            }  */
   }
+  //mean
   output = output * (1.0f / (float)(maxSpp));
 
   //-----------------

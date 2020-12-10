@@ -1,6 +1,11 @@
+import sys
+import fileinput
+import os.path
+from os import path
 import pywavefront
 import numpy as np
 from PIL import Image
+
 #----------------------------------
 #   SCENE IMPORTER
 #----------------------------------
@@ -25,38 +30,7 @@ class Scene(object):
     materialCount = 0
     materialLength = []
 
-    def getMaterialInfo(self,matId,argId):
-        offset = matId*self.materialData_ChunkSize
-        if(argId == 0): #return type
-            return self.materialData[offset+0].astype(float)
-        if(argId == 1): #return color
-            return tuple(self.materialData[offset+1 : offset+4])
-        else: #return roughness or ior
-            return self.materialData[offset+argId+2].astype(float)
-
-    def setMaterialInfo(self,matId,argId,newValue):
-        offset = matId*self.materialData_ChunkSize
-        if(argId == 0): #set type
-            self.materialData[offset+0] = newValue
-            self.updateMatData()
-            return
-        if(argId == 1): #set color
-            self.materialData[offset+1] = min(newValue[0],1.0)
-            self.materialData[offset+2] = min(newValue[1],1.0)
-            self.materialData[offset+3] = min(newValue[2],1.0)
-            self.updateMatData()
-            return
-        else: #set roughness or ior
-            self.materialData[offset+argId+2] = newValue
-            self.updateMatData()
-            return
-
-    def updateMatData(self):
-            print("saving Material to disk")
-            np.save("ObjFiles/Cornell box",self.materialData.astype(np.float32))
-
-    def __init__(self,path):
-
+    def importSceneGeometry(self,path):
         print("#-----------------------#")
         print("#    import object      #")
         print("#-----------------------#")
@@ -96,17 +70,7 @@ class Scene(object):
 
         self.materialCount = matCounter
         print("==> DONE")
-        print("import material data")
-
-        #load from file, create new file if it doesn't exist
-        try:
-            self.materialData = np.load(matSavedFilePath+".npy").astype(np.float32)
-        except IOError as error:
-            print(error)
-            print("creating new material save file")
-            self.materialData = np.zeros(self.materialData_ChunkSize*(self.materialCount+1)).astype(np.int32)
-            np.save("ObjFiles/Cornell box",self.materialData)
-
+        
         print("import vertex data :")
         self.V_p = np.array(s.vertices).astype(np.float32)
         self.V_p = np.reshape(self.V_p,(1,len(self.V_p)*3))
@@ -117,9 +81,37 @@ class Scene(object):
         self.V_uv = np.array(s.parser.tex_coords).astype(np.float32)
         self.V_uv = np.reshape(self.V_uv,(1,len(self.V_uv)*2))
 
-        self.materialData = np.array(self.materialData).astype(np.float32)
         self.faceData = np.array(self.faceData).astype(np.int32)
         print("==> DONE\n")
+
+    def importMaterialData(self):
+        print("import material data")
+        self.materialData = []
+        param = self.config.loadParameters()
+
+        materialKeys = []
+        for k in param.keys():
+            if(k.split("_")[0] == "M"):
+                materialKeys.append(k)
+
+        for k in materialKeys:
+            self.materialData.append(param[k])
+
+
+        self.materialData = np.array(self.materialData).astype(np.float32)
+        print("==> DONE\n")
+
+    #path is the .obj file path
+    def __init__(self,path):
+        self.path = path
+        self.importSceneGeometry(path)
+        self.config = configReader(path.replace(".obj",".ini"),self.materialCount)
+        self.importMaterialData()
+
+    def loadParameters(self):
+        return self.config.loadParameters()
+
+       
 
 #export array[SizeX*SizeY*3] (float) into .png file
 def saveImg(data,sizeX,sizeY,name):
@@ -127,3 +119,76 @@ def saveImg(data,sizeX,sizeY,name):
     img = Image.fromarray((data*255).astype('uint8'),"RGB")
     img.save(name + ".png")
     return
+
+
+#----------------------------------
+#     SCENE PARAMETER READER
+#----------------------------------
+# read the scene config file at path
+# the config file is used to keep track of:
+#    -camera position
+#    -material values
+#    -render parameters
+#----------------------------------
+class configReader(object):
+
+    def __init__(self,scenepath, materialCount):
+        self.configPath = scenepath
+
+        #default fill if file doesn't exist
+        if(not path.exists(scenepath)):
+            f = open(scenepath, "w")
+            f.write("sceneFile=" + scenepath+"\n"+
+"""resolution=256
+spp=10
+maxBounce=4
+""")
+            f.close()
+            for i in range(materialCount+1):
+                self.setParameter("M_"+str(i)+"_Type",1)
+                self.setParameter("M_"+str(i)+"_Color_R",1)
+                self.setParameter("M_"+str(i)+"_Color_G",1)
+                self.setParameter("M_"+str(i)+"_Color_B",1)
+                self.setParameter("M_"+str(i)+"_roughness",0)
+                self.setParameter("M_"+str(i)+"_ior",0)
+
+    def getParameter(self,param):
+        configFile = open(self.configPath,mode="r")
+        Lines = configFile.readlines() 
+    
+        # Strips the newline character 
+        for line in Lines: 
+            split = line.split('=')
+            if(split[0] == param):
+                configFile.close()
+                return split[1].split("\n")[0] 
+        configFile.close()
+        return ""
+
+    #return a dictionary filled with the parameters
+    def loadParameters(self):
+        parameters = {}
+        configFile = open(self.configPath,mode="r")
+        Lines = configFile.readlines() 
+    
+        for line in Lines: 
+            split = line.split('=')
+            parameters[split[0]] = split[1].split("\n")[0]
+        configFile.close()
+        return parameters
+
+    def setParameter(self, param, value):
+        found = False
+        for line in fileinput.input([self.configPath], inplace=True):
+            if line.strip().startswith(param+"="):
+                line = param+"="+ str(value)+"\n"
+                found = True
+            sys.stdout.write(line)
+
+        if(not found):
+            line = param+"="+ str(value)+"\n"
+            file = open(self.configPath,mode="a")
+            file.write(line)
+            file.close
+
+        print("set parameter '"+param+"' to " + str(value))
