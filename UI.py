@@ -130,7 +130,9 @@ bg = style.lookup('TFrame', 'background')
 #configReader Object
 f = open("config.ini","r")
 scenePath = f.readline().split("=")[1]
+#load and build scene
 scene = Scene(scenePath)
+#load config
 config = scene.config
 parameters = {}
 updateParameters()

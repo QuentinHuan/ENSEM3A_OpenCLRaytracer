@@ -16,13 +16,15 @@ def main(scene):
     # --------------------------#
     # Open CL Context
     # Create a compute context
+    #context = cl.create_some_context()
     platform = cl.get_platforms()
-    my_gpu_devices = platform[0].get_devices()
-    context = cl.Context(devices=my_gpu_devices)
+    CPU = platform[1].get_devices()
+    GPU = platform[0].get_devices()
+    context = cl.Context()
     # Create a command queue
     queue = cl.CommandQueue(context)
     # KernelLauncher
-    Klauncher = KernelLauncher(context, platform, my_gpu_devices[0], queue)
+    Klauncher = KernelLauncher(context, platform, CPU[0], queue)
 
     # time statistic
     startTime = time()
@@ -67,7 +69,7 @@ def main(scene):
 
     # arg: h_img_out, h_vertex_p,h_vertex_n,h_vertex_uv, h_face_data, h_material_data, h_cam, imgDim, spp
     Klauncher.launch_Raytracing(outImg, scene.V_p, scene.V_n, scene.V_uv,
-                                scene.faceData, scene.materialData, cam, imgResolution*imgResolution, spp, maxBounce)
+                                scene.faceData, scene.materialData, scene.BVH.exportArray, cam, imgResolution*imgResolution, spp, maxBounce)
 
     inputImg = outImg
     print("==> Done")

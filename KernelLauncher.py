@@ -25,9 +25,9 @@ class KernelLauncher(object):
         RaytracerProgram = cl.Program(context, kernelsource).build(options=['-I', "Kernels"])
         self.K_Raytracing = RaytracerProgram.Raytracing
         self.K_Raytracing.set_scalar_arg_dtypes(
-            [None, None, None, None, None, None, None, np.uint32, np.uint32, np.uint32, np.uint32])
+            [None, None, None, None, None, None, None ,None, np.uint32, np.uint32, np.uint32, np.uint32])
 
-    def launch_Raytracing(self, h_img_out, h_vertex_p,h_vertex_n,h_vertex_uv, h_face_data, h_material_data, h_cam, imgDim,spp,maxBounce):
+    def launch_Raytracing(self, h_img_out, h_vertex_p,h_vertex_n,h_vertex_uv, h_face_data, h_material_data, h_BVH, h_cam, imgDim,spp,maxBounce):
 
         #         device buffers
         # --------------------------
@@ -47,14 +47,26 @@ class KernelLauncher(object):
         # material data
         d_material_data = cl.Buffer(
             self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_material_data)
+        d_BVH = cl.Buffer(
+            self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_BVH)
         # Camera
         d_cam = cl.Buffer(self.context, cl.mem_flags.READ_ONLY |
                           cl.mem_flags.COPY_HOST_PTR, hostbuf=h_cam)
 
         triCount = int(len(h_face_data)/10)
         self.K_Raytracing(self.queue, (imgDim,), None, d_img_out, d_vertex_p, d_vertex_n, d_vertex_uv, d_face_data,
-                          d_material_data, d_cam, triCount, imgDim, spp, maxBounce)
+                          d_material_data, d_BVH, d_cam, triCount, imgDim, spp, maxBounce)
         cl.enqueue_copy(self.queue, h_img_out, d_img_out)
+
+        d_img_out.release()
+        d_vertex_p.release()
+        d_vertex_n.release()
+        d_vertex_uv.release()
+        d_face_data.release()
+        d_material_data.release()
+        d_BVH.release()
+        d_cam.release()
+
 
     def launch_ImgProcessing(self, h_src, h_out, SIZE):
 

@@ -1,3 +1,5 @@
+#include "stack.cl"
+
 typedef struct vertex
 {
     float2 uv;
@@ -32,7 +34,11 @@ typedef struct material
     float ior;
 } material;
 
-
+typedef struct box
+{
+    float3 min, max, center;
+	float3 bounds[2];
+} box;
 
 
 //------------
@@ -179,18 +185,101 @@ hitInfo intersect(tri T, ray r)
     else // This means that there is a line intersection but not a ray intersection.
         return output;
 }
-//---------------------
-//      rayTrace
-//---------------------
 
-//--> test all triangle intersections along ray 'r'
-hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv, __constant int *face_data,const int triCount)
+//---------------
+// BVH traversal
+//---------------
+
+/* bool intersectBox(ray r, box b)
+{ 
+    float tx1 = (b.min.x - r.o.x)/r.dir.x;
+    float tx2 = (b.max.x - r.o.x)/r.dir.x;
+
+    float tmin = fmin(tx1, tx2);
+    float tmax = fmax(tx1, tx2);
+
+    return tmax >= tmin;
+
+    float ty1 = (b.min.y - r.o.y)/r.dir.y;
+    float ty2 = (b.max.y - r.o.y)/r.dir.y;
+
+    tmin = fmax(tmin, fmin(ty1, ty2));
+    tmax = fmin(tmax, fmax(ty1, ty2));
+
+    float tz1 = (b.min.z - r.o.z)/r.dir.z;
+    float tz2 = (b.max.z - r.o.z)/r.dir.z;
+
+    tmin = fmax(tmin, fmin(tz1, tz2));
+    tmax = fmin(tmax, fmax(tz1, tz2));
+
+
+} */ 
+
+bool intersectBox(ray r, box b)
 {
-    hitInfo H;
-    hitInfo HTemp;
-    for (int k = 0; k < triCount; k++)
+    float epsilon = 0.0001;
+    float tmin = (b.min.x - r.o.x) / (r.dir.x+epsilon); 
+    float tmax = (b.max.x - r.o.x) / (r.dir.x+epsilon); 
+ 
+    if (tmin > tmax)
     {
-        //build triangle
+        float t = tmin;
+        tmin = tmax;
+        tmax = t;
+    }
+ 
+    float tymin = (b.min.y - r.o.y) / (r.dir.y+epsilon); 
+    float tymax = (b.max.y - r.o.y) / (r.dir.y+epsilon); 
+ 
+    if (tymin > tymax)
+    {
+        float ty = tymin;
+        tymin = tymax;
+        tymax = ty;
+    }
+ 
+    if ((tmin > tymax) || (tymin > tmax)) 
+        return false; 
+ 
+    if (tymin > tmin) 
+        tmin = tymin; 
+ 
+    if (tymax < tmax) 
+        tmax = tymax; 
+ 
+    float tzmin = (b.min.z - r.o.z) / (r.dir.z+epsilon); 
+    float tzmax = (b.max.z - r.o.z) / (r.dir.z+epsilon); 
+ 
+    if (tzmin > tzmax)     
+    {
+        float tz = tzmin;
+        tzmin = tzmax;
+        tzmax = tz;
+    }
+    if ((tmin > tzmax) || (tzmin > tmax)) 
+        return false; 
+ 
+    if (tzmin > tmin) 
+        tmin = tzmin; 
+ 
+    if (tzmax < tmax) 
+        tmax = tzmax; 
+ 
+    return true; 
+
+}
+
+bool interNode(ray r, __constant float *BVH, int curr)
+{
+    box b; 
+    b.min = (float3)(BVH[9*curr + 2],BVH[9*curr + 3],BVH[9*curr + 4]);
+    b.max = (float3)(BVH[9*curr + 5],BVH[9*curr + 6],BVH[9*curr +7]);
+    return intersectBox(r,b);
+}
+
+tri makeTri(int index,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv, __constant int *face_data,const int triCount)
+{
+        int k = index;
         tri T;
         T.m = (int)face_data[k*10];//material
         vertex V[3];
@@ -211,16 +300,58 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
             c++;
         }
         T.a = V[0];T.b = V[1];T.c = V[2];
-        
-        if(k==0) H = intersect(T, r);
-        else HTemp = intersect(T, r);
-        
-        if(HTemp.bHit && HTemp.k < H.k && HTemp.k > 0.0f)
-        {
-            H=HTemp;
-        }
-    } 
+        return T;
+}
 
+//---------------------
+//      rayTrace
+//---------------------
+//--> test all triangle intersections along ray 'r'
+hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv, __constant int *face_data,const int triCount,__constant float *BVH)
+{
+    hitInfo H;
+    hitInfo HTemp;
+
+    //BVH tree traversal:
+    int curr = 0;
+    int m =0;
+    struct Stack S;
+    S.capacity = 20;
+    S.top = -1;
+    push(&S,0);
+        //pre-order tree traversal (non recursive)
+        while(!isEmpty(&S))
+        {
+            curr = (int)(pop(&S));
+            if(interNode(r,BVH,(int)curr))
+            {
+                if((int)(BVH[9*curr+8]) != -1)//leaf node
+                {
+                    //traitement
+                    tri T = makeTri((int)(BVH[9*curr+8]),vertex_p,vertex_n,vertex_uv,face_data,triCount);
+                    
+                    if(m==0) H = intersect(T, r);
+                    else HTemp = intersect(T, r);
+                    m=m+1;
+                    if(HTemp.bHit && HTemp.k < H.k && HTemp.k > 0.0f)
+                    {
+                        H=HTemp;
+                    }
+                }
+                //left
+                if ((int)(BVH[9*curr]) != -1)
+                {
+                    push(&S,(int)(BVH[9*curr]));
+                }
+                //right
+                if ((int)(BVH[9*curr+1]) != -1)
+                {
+                    push(&S,(int)(BVH[9*curr+1]));
+                }
+            }
+
+        }
+    //printf("m=%d",m);
     if(H.k <= 0.0f)
     {
         H.bHit = false;
@@ -228,3 +359,5 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
     }
     return H;
 }
+
+

@@ -26,7 +26,7 @@ void printVec(float3 v) {
 __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                          __constant float *vertex_n,
                          __constant float *vertex_uv, __constant int *face_data,
-                         __global float *mat, __global float *cam,
+                         __global float *mat,__constant float *BVH, __global float *cam,
                          const int triCount, const int imgSize,
                          const int maxSpp, const int maxBounce) {
     //--------------
@@ -64,7 +64,7 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
   r.dir = normalize((position + pixelCoord) - focal);
 
   // fire cam ray
-  hitInfo H_cam_cache = rayTrace(r, vertex_p, vertex_n, vertex_uv, face_data, triCount);
+  hitInfo H_cam_cache = rayTrace(r, vertex_p, vertex_n, vertex_uv, face_data, triCount,BVH);
   material camMat_cache = extractMaterial(mat, H_cam_cache.mat);
   //-----------------
   // Raytracing logic
@@ -115,7 +115,7 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                 R_bounce.o = (R_cam.o + (normalize(R_cam.dir) * H_cam.k)) + (normalize(H_cam.n) * epsilon);
 
                 // next ray shoot
-                hitInfo H_bounce = rayTrace(R_bounce, vertex_p, vertex_n, vertex_uv, face_data, triCount);
+                hitInfo H_bounce = rayTrace(R_bounce, vertex_p, vertex_n, vertex_uv, face_data, triCount,BVH);
                 material bounceMat = extractMaterial(mat, H_bounce.mat);
 
                 // attenuation calculation
