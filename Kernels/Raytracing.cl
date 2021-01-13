@@ -124,7 +124,7 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                     case 2://Glossy GGX
                         R_bounce.dir = rand_sample_GGX(camMat, R_cam.dir, H_cam.n, &seed1, &seed0, &invPdfBounce);
                         BRDF = BRDF_GGX(camMat,-R_cam.dir,R_bounce.dir,H_cam.n);
-                        //BRDF = (float3)(1,1,1);
+                        //BRDF = (float3)(0.1,0.1,0.1);
                         break;
                     case 3://Glass
                         R_bounce.dir = rand_sample_Glass(R_cam.dir, &invPdfBounce);
