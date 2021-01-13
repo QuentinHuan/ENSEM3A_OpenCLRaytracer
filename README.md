@@ -6,7 +6,7 @@ Last version was more of a prototype and wasn't really usable in practice. The g
 
 Technologies: PyOpenCL, Tkinter
 
-![alt text](/Screenshots/screenshot.png)
+![alt text](/screenshots/screenshot.png)
 
 I plan to implement :
 
