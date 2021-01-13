@@ -2,6 +2,7 @@ import pyopencl as cl
 import numpy as np
 from time import time
 import PIL
+from PIL import Image
 
 import FileManager
 from FileManager import Scene
@@ -55,9 +56,22 @@ def main(scene):
     # camera
     # |position|direction|resX|resY| size|FOV|
     # |x  x   x|x   x   x|  x |  x | x   | x |
-    cam = np.array([0, -3.5, 0,
-                    1, 0, 0,
+    cam = np.array([float(parameters["cam_x"]), float(parameters["cam_y"]), float(parameters["cam_z"]),
+                    float(parameters["cam_rx"]), float(parameters["cam_ry"]), float(parameters["cam_rz"]),
                     imgResolution, imgResolution, 1, 3.14/4.0]).astype(np.float32)
+
+
+    #--------------------------------#
+    #         IBL texture
+    #--------------------------------#
+    # load and convert source image
+    src_img = Image.open('IBL/Arches_E_PineTree_Preview.jpg').convert("RGBA")  # This example code only works with RGBA images
+    h_IBL = src_img
+
+
+
+
+
 
     #--------------------------------#
     #          Computation
@@ -69,7 +83,7 @@ def main(scene):
 
     # arg: h_img_out, h_vertex_p,h_vertex_n,h_vertex_uv, h_face_data, h_material_data, h_cam, imgDim, spp
     Klauncher.launch_Raytracing(outImg, scene.V_p, scene.V_n, scene.V_uv,
-                                scene.faceData, scene.materialData, scene.BVH.exportArray, cam, imgResolution*imgResolution, spp, maxBounce)
+                                scene.faceData, scene.materialData, scene.BVH.exportArray, cam, imgResolution*imgResolution, spp, maxBounce,h_IBL)
 
     inputImg = outImg
     print("==> Done")

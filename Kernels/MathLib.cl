@@ -60,86 +60,44 @@ static float3 rotateVec(float angle, float3 axis, float3 vector)
     return (quaternion_mult(quaternion_mult(q,V), qinv)).yzw;
 }
 
-//------------
-//Random
-//------------
-static float rand(unsigned int *seed0, unsigned int *seed1) {
+//IBL sampling
 
-	/* hash the seeds using bitwise AND operations and bitshifts */
-	*seed0 = 36969 * ((*seed1) & 65535) + ((*seed1) >> 16);  
-	*seed1 = 18000 * ((*seed0) & 65535) + ((*seed0) >> 16);
-
-	unsigned int ires = ((*seed0) << 16) + (*seed1);
-
-	/* use union struct to convert int to float */
-	union {
-		float f;
-		unsigned int ui;
-	} res;
-
-	res.ui = (ires & 0x007fffff) | 0x40000000;  /* bitwise AND, bitwise OR */
-	return (res.f - 2.0f) / 2.0f;
+float2 SampleSphericalMap(float3 direction) {
+    direction=rotateVec(90*(3.14f/180.0f),(float3)(1,0,0),direction);
+    direction=rotateVec(90*(3.14f/180.0f),(float3)(0,1,0),direction);
+    float2 invAtan = (float2)(0.1591f, 0.3183f);
+    float2 uv = (float2)(atan2(direction.z, direction.x), asin(direction.y));
+    uv = uv * invAtan;
+    uv = uv + 0.5f;
+    return uv;
 }
 
-	static float3 rand_hemi_cosine(float3 dir, unsigned int *seed0, unsigned int *seed1, float *invPdf)
-	{
-		//lambert cosine weighted
-		float u = rand(seed0,seed1);				  //[0,1]
-		float theta = rand(seed0,seed1) * 2.0f * 3.14f; //[0,2pi]
 
-		const float r = sqrt(u);
-		const float x = r * cos(theta);
-		const float y = r * sin(theta);
-		float3 localV = (float3)(x, y, sqrt(fmax(0.0f, 1.0f - u)));
-		float3 l;
+//----------------------------
+// BRDF space to global space
+//----------------------------
 
-        float colinear = fabs(dot(normalize(dir),(float3)(0.0f, 0.0f, 1.0f)));
-        if (colinear == 1.0f)
-        {
-            //printf("norm");
-            l = localV*dir.z;
-        }
-		else
-		{
-            float3 axis = cross((float3)(0, 0, 1), dir);
-            float rotAngle = acos(dot(dir, (float3)(0, 0, 1)));
-            l = normalize(rotateVec(rotAngle, axis, localV));
-		}
-        *invPdf = 3.14f / (fmax(dot(l, dir),0.0f));
-        return l;
-	}
-
- static float3 rand_hemi_uniform(float3 dir, unsigned int *seed0, unsigned int *seed1, float *invPdf)
+float3 localToGlobal(float3 localV, float3 dir)
 {
-    float phi = 2.0f*3.14f*(rand(seed0,seed1));
-    float theta = acos(1.0f-(rand(seed0,seed1)));
-    float3 localV = (float3)(cos(phi)*sin(theta), sin(theta)*sin(phi),cos(theta));
-    
     float3 worldV;
     float colinear = fabs(dot(normalize(dir),(float3)(0.0f, 0.0f, 1.0f)));
     if (colinear == 1.0f)
     {
-        //printf("norm");
         worldV = localV*dir.z;
     }
     else
     {
         float3 axis = normalize(cross((float3)(0.0f, 0.0f, 1.0f), dir));
         float rotAngle = acos(dot(dir, (float3)(0, 0, 1.0f)));
-        //worldV = dir;
         worldV = rotateVec(rotAngle, axis, localV);
-        //printf("x %f y %f z %f",worldV.x,worldV.y,worldV.z);
     }
-
-    *invPdf = 2.0f*3.14f;
-    return normalize(worldV);
-} 
+    return worldV;
+}
 
 
 //---------------------
 //      intersect
 //---------------------
-
 //--> test intersections between Ray 'r' and Triangle 'T'
 hitInfo intersect(tri T, ray r)
 {
@@ -189,8 +147,7 @@ hitInfo intersect(tri T, ray r)
 //---------------
 // BVH traversal
 //---------------
-
-/* bool intersectBox(ray r, box b)
+bool intersectBox(ray r, box b)
 { 
     float tx1 = (b.min.x - r.o.x)/r.dir.x;
     float tx2 = (b.max.x - r.o.x)/r.dir.x;
@@ -213,61 +170,7 @@ hitInfo intersect(tri T, ray r)
     tmax = fmin(tmax, fmax(tz1, tz2));
 
 
-} */ 
-
-bool intersectBox(ray r, box b)
-{
-    float epsilon = 0.0001;
-    float tmin = (b.min.x - r.o.x) / (r.dir.x+epsilon); 
-    float tmax = (b.max.x - r.o.x) / (r.dir.x+epsilon); 
- 
-    if (tmin > tmax)
-    {
-        float t = tmin;
-        tmin = tmax;
-        tmax = t;
-    }
- 
-    float tymin = (b.min.y - r.o.y) / (r.dir.y+epsilon); 
-    float tymax = (b.max.y - r.o.y) / (r.dir.y+epsilon); 
- 
-    if (tymin > tymax)
-    {
-        float ty = tymin;
-        tymin = tymax;
-        tymax = ty;
-    }
- 
-    if ((tmin > tymax) || (tymin > tmax)) 
-        return false; 
- 
-    if (tymin > tmin) 
-        tmin = tymin; 
- 
-    if (tymax < tmax) 
-        tmax = tymax; 
- 
-    float tzmin = (b.min.z - r.o.z) / (r.dir.z+epsilon); 
-    float tzmax = (b.max.z - r.o.z) / (r.dir.z+epsilon); 
- 
-    if (tzmin > tzmax)     
-    {
-        float tz = tzmin;
-        tzmin = tzmax;
-        tzmax = tz;
-    }
-    if ((tmin > tzmax) || (tzmin > tmax)) 
-        return false; 
- 
-    if (tzmin > tmin) 
-        tmin = tzmin; 
- 
-    if (tzmax < tmax) 
-        tmax = tzmax; 
- 
-    return true; 
-
-}
+} 
 
 bool interNode(ray r, __constant float *BVH, int curr)
 {
@@ -360,4 +263,152 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
     return H;
 }
 
+///////////////////////////////
+//------------
+//Random
+//------------
+static float rand(unsigned int *seed0, unsigned int *seed1) {
 
+	/* hash the seeds using bitwise AND operations and bitshifts */
+	*seed0 = 36969 * ((*seed1) & 65535) + ((*seed1) >> 16);  
+	*seed1 = 18000 * ((*seed0) & 65535) + ((*seed0) >> 16);
+
+	unsigned int ires = ((*seed0) << 16) + (*seed1);
+
+	/* use union struct to convert int to float */
+	union {
+		float f;
+		unsigned int ui;
+	} res;
+
+	res.ui = (ires & 0x007fffff) | 0x40000000;  /* bitwise AND, bitwise OR */
+	return (res.f - 2.0f) / 2.0f;
+}
+
+static float3 rand_hemi_cosine(float3 dir, unsigned int *seed0, unsigned int *seed1, float *invPdf)
+{
+    //lambert cosine weighted
+    float u = rand(seed0,seed1);				  //[0,1]
+    float theta = rand(seed0,seed1) * 2.0f * 3.14f; //[0,2pi]
+
+    const float r = sqrt(u);
+    const float x = r * cos(theta);
+    const float y = r * sin(theta);
+    float3 localV = (float3)(x, y, sqrt(fmax(0.0f, 1.0f - u)));
+    float3 l;
+
+    float colinear = fabs(dot(normalize(dir),(float3)(0.0f, 0.0f, 1.0f)));
+    if (colinear == 1.0f)
+    {
+        //printf("norm");
+        l = localV*dir.z;
+    }
+    else
+    {
+        float3 axis = cross((float3)(0, 0, 1), dir);
+        float rotAngle = acos(dot(dir, (float3)(0, 0, 1)));
+        l = normalize(rotateVec(rotAngle, axis, localV));
+    }
+    *invPdf = 3.14f / (fmax(dot(l, dir),0.0f));
+    return l;
+}
+
+ static float3 rand_hemi_uniform(float3 dir, unsigned int *seed0, unsigned int *seed1, float *invPdf)
+{
+    float phi = 2.0f*3.14f*(rand(seed0,seed1));
+    float theta = acos(1.0f-(rand(seed0,seed1)));
+    float3 localV = (float3)(cos(phi)*sin(theta), sin(theta)*sin(phi),cos(theta));
+    
+    float3 worldV;
+    float colinear = fabs(dot(normalize(dir),(float3)(0.0f, 0.0f, 1.0f)));
+    if (colinear == 1.0f)
+    {
+        //printf("norm");
+        worldV = localV*dir.z;
+    }
+    else
+    {
+        float3 axis = normalize(cross((float3)(0.0f, 0.0f, 1.0f), dir));
+        float rotAngle = acos(dot(dir, (float3)(0, 0, 1.0f)));
+        //worldV = dir;
+        worldV = rotateVec(rotAngle, axis, localV);
+        //printf("x %f y %f z %f",worldV.x,worldV.y,worldV.z);
+    }
+
+    *invPdf = 2.0f*3.14f;
+    return normalize(worldV);
+} 
+
+static float3 rand_sample_GGX(material m, float3 n, float3 v, unsigned int *seed0, unsigned int *seed1, float *invPdf)
+{
+
+    //GGX
+    float alphaSqr = (pown(m.roughness,2));
+    float u = rand(seed0,seed1);				//[0,1]
+    float phi = rand(seed0,seed1) * 2 * 3.14; //[0,2pi]
+    float theta = acos(sqrt((1.0f - u)/((pown(m.roughness,2) - 1.0f) * u + 1.0f)));
+
+    float st = sin(theta);
+    float3 localV = (float3)(st * cos(phi), st * sin(phi), cos(theta));
+
+    float3 worldV = localToGlobal(localV,n);
+
+    float3 l = worldV * 2.0f * dot(v, worldV) - v;
+    float D = alphaSqr /
+                (3.14f * pown(pown(fmax(dot(n, worldV), 0.0f), 2) * (alphaSqr - 1.0f) + 1.0f, 2));
+    *invPdf = (4.0f * fabs(dot(worldV, v))) / (D * dot(worldV, n));
+    return normalize(worldV);
+
+} 
+
+static float3 rand_sample_Glass(float3 v, float *invPdf)
+{
+    *invPdf = 1;
+    return normalize(v);
+} 
+
+//------------
+//    BRDF
+//------------
+	float3 BRDF_GGX(material m, float3 v, float3 l, float3 n)
+	{
+		//----------------------||
+		//        vectors
+		//----------------------||
+		float3 h = normalize(l + v);
+		//----------------------||
+		//  Specular Component
+		//----------------------||
+		float D = pown(m.roughness,2) /
+				  (3.14f * pown(pown(fmax(dot(n, h), 0.0f), 2) * (pown(m.roughness,2) - 1.0f) + 1.0f, 2));
+
+		float NdotV = fmax(dot(n, v), 0.0f);
+		float k = m.roughness * sqrt(2.0f / 3.14f);
+		float G1 = NdotV / (NdotV * (1.0f - k) + k);
+
+		float NdotL = fmax(dot(n, l), 0.0f);
+		float G2 = NdotL / (NdotL * (1.0f - k) + k);
+		float G = G1 * G2;
+		float F0 = 0.04f;
+		float F =
+			F0 + (1 - F0) * pown(1.0f - fmax(dot(h, v), 0.0f), 5);
+
+		float specular =(F * G * D) * (1.0f / fmax(4.0f * fmax(dot(v, n), 0.0f) * fmax(dot(l, n), 0.0f), 0.001f));
+
+		//----------------------||
+		//   Diffuse Component
+		//----------------------||
+		float3 result = ((float3)(1.0f, 1.0f, 1.0f) * specular);
+
+		return result;
+	}
+
+    float3 BRDF_Lambert(material m)
+	{
+		return (m.color * (1.0f / 3.14f));
+	}
+
+    float3 BRDF_Glass(material m)
+	{
+		return (m.color);
+	}

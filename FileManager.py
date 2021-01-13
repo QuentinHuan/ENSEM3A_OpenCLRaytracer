@@ -333,10 +333,16 @@ class configReader(object):
         #default fill if file doesn't exist
         if(not path.exists(scenepath)):
             f = open(scenepath, "w")
-            f.write("sceneFile=" + scenepath+"\n"+
+            f.write("sceneFile=" + scenepath.replace("ini","obj")+"\n"+
 """resolution=256
 spp=10
 maxBounce=4
+cam_x=0
+cam_y=0
+cam_z=0
+cam_rx=0
+cam_ry=0
+cam_rz=0
 """)
             f.close()
             for i in range(materialCount+1):
@@ -380,6 +386,7 @@ maxBounce=4
                 found = True
             sys.stdout.write(line)
 
+        #not found, create parameter
         if(not found):
             line = param+"="+ str(value)+"\n"
             file = open(self.configPath,mode="a")

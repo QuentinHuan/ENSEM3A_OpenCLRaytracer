@@ -18,6 +18,17 @@ void printVec(float3 v) {
   printf("x %f y %f z %f", v.x, v.y, v.z);
   return;
 }
+
+float3 sampleIBL(float3 dir,sampler_t sampler, __read_only image2d_t IBL)
+{
+    float2 uv = SampleSphericalMap(dir);
+    float4 pix = read_imagef(IBL, sampler, (int2)(uv.x*600,uv.y*300));
+
+    return 1.0f*pix.xyz;
+    //return (float3)(0.3f,0.3f,0.3f);
+}
+
+
 //------------------------------------
 // raytracing kernel
 // data and mat as defined in 'scene' class member 'vertexData' and
@@ -28,7 +39,7 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                          __constant float *vertex_uv, __constant int *face_data,
                          __global float *mat,__constant float *BVH, __global float *cam,
                          const int triCount, const int imgSize,
-                         const int maxSpp, const int maxBounce) {
+                         const int maxSpp, const int maxBounce, __read_only image2d_t IBL) {
     //--------------
     //initialise
     //--------------
@@ -42,7 +53,8 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
 
   float epsilon = 0.00001f;
 
-  float3 backgroundColor = (float3)(0.1f);
+  float3 backgroundColor = (float3)(0.5f);
+  const sampler_t sampler =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_LINEAR;
   //-----------------
   // Ray construction
   //-----------------
@@ -62,7 +74,9 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
 
   r.o = position;
   r.dir = normalize((position + pixelCoord) - focal);
-
+  r.dir = rotateVec(cam[3]*(3.14f/180.0f),(float3)(1,0,0),r.dir); // x angle
+  r.dir = rotateVec(cam[4]*(3.14f/180.0f),(float3)(0,1,0),r.dir); // y angle
+  r.dir = rotateVec(cam[5]*(3.14f/180.0f),(float3)(0,0,1),r.dir); // z angle
   // fire cam ray
   hitInfo H_cam_cache = rayTrace(r, vertex_p, vertex_n, vertex_uv, face_data, triCount,BVH);
   material camMat_cache = extractMaterial(mat, H_cam_cache.mat);
@@ -80,7 +94,7 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
     //sample out initialisation
     float3 sampleOut = (float3)(1.0f);
     if (H_cam.bHit)sampleOut = camMat.color; // initialise with base color;
-    else sampleOut = backgroundColor; // initialise with background
+    else sampleOut = sampleIBL(R_cam.dir,sampler,IBL); // initialise with background
 
     // camRay is the previous ray
     // bounce ray the new ray that bounce of the surface
@@ -94,32 +108,39 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                 // next ray setup
                 float invPdfBounce;
                 ray R_bounce;
-
-                //sampling method selection depending on current surface's material
+                float3 BRDF;
+                float signG = 1;
+                //sampling method selection depending on current surface material
                 switch(camMat.type)
                 {
                     case 0://emissive
                         R_bounce.dir = rand_hemi_uniform(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        BRDF = (float3)(1,1,1);
                         break;
                     case 1://diffuse
                         R_bounce.dir = rand_hemi_cosine(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        BRDF = BRDF_Lambert(camMat);
                         break;
                     case 2://Glossy GGX
-                        R_bounce.dir = rand_hemi_uniform(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        R_bounce.dir = rand_sample_GGX(camMat, R_cam.dir, H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        BRDF = BRDF_GGX(camMat,-R_cam.dir,R_bounce.dir,H_cam.n);
+                        //BRDF = (float3)(1,1,1);
                         break;
                     case 3://Glass
-                        R_bounce.dir = rand_hemi_uniform(H_cam.n, &seed1, &seed0, &invPdfBounce);
+                        R_bounce.dir = rand_sample_Glass(R_cam.dir, &invPdfBounce);
+                        BRDF = BRDF_Glass(camMat);
+                        signG = sign(dot(H_cam.n,R_bounce.dir));
                         break;
                 }
 
-                R_bounce.o = (R_cam.o + (normalize(R_cam.dir) * H_cam.k)) + (normalize(H_cam.n) * epsilon);
+                R_bounce.o = (R_cam.o + (normalize(R_cam.dir) * H_cam.k)) + (normalize(H_cam.n) * epsilon * (signG));//sign(dot(H_cam.n,R_bounce.dir)))
 
                 // next ray shoot
                 hitInfo H_bounce = rayTrace(R_bounce, vertex_p, vertex_n, vertex_uv, face_data, triCount,BVH);
                 material bounceMat = extractMaterial(mat, H_bounce.mat);
 
                 // attenuation calculation
-                float att = invPdfBounce * dot(R_bounce.dir, normalize(H_cam.n)) * (1.0f / 3.14f);
+                float att = invPdfBounce * dot(R_bounce.dir, normalize(H_cam.n));
 
                 if (H_bounce.bHit) // hit something solid
                 {
@@ -128,11 +149,11 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                     H_cam = H_bounce;
                     camMat = bounceMat;
                     //add bounce contribution
-                    sampleOut = sampleOut * bounceMat.color * (att);
-                    if (bounceMat.type != 0) 
+                    sampleOut = sampleOut * BRDF * att;
+                    if (bounceMat.type != 0) //not emissive surface
                     {
                         //max bounce reach, sample is nullified
-                        if (j == maxBounce) 
+                        if (j == maxBounce && bounceMat.type !=3) 
                         {
                             sampleOut = 0;
                             break;
@@ -146,7 +167,7 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                 } 
                 else // lost in background
                 {
-                    sampleOut = sampleOut*backgroundColor;
+                    sampleOut = sampleOut*sampleIBL(R_bounce.dir,sampler,IBL);
                     break;
                 }
             } 

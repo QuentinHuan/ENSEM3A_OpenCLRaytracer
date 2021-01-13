@@ -55,6 +55,7 @@ def openObjFile(*args):
         #updateParameters()
         sceneFilePath.set(file.name)
         f = open("config.ini","w")
+        #filename = file.name.replace(".ini",".obj")
         f.write("scenePath="+file.name)
         f.close()
 
@@ -111,9 +112,19 @@ def Material_Spinbox_Callback(matId):
 #update material info and write changes to disk
 def arg_Callback(*args):
     #get entry values
+    #render settings
     scene.config.setParameter("resolution",resolution_Entry.get())
     scene.config.setParameter("spp",spp_Entry.get())
     scene.config.setParameter("maxBounce",maxBounce_Entry.get())
+
+    #camera settings
+    scene.config.setParameter("cam_x",x_Entry.get())
+    scene.config.setParameter("cam_y",y_Entry.get())
+    scene.config.setParameter("cam_z",z_Entry.get())
+
+    scene.config.setParameter("cam_rx",rx_Entry.get())
+    scene.config.setParameter("cam_ry",ry_Entry.get())
+    scene.config.setParameter("cam_rz",rz_Entry.get())
 
 #-----------------------------
 #           Init
@@ -250,9 +261,51 @@ maxBounce_Entry = ttk.Entry(SceneTab,textvariable = maxBounce_textVariable)
 maxBounce_Entry.grid(column=1, row=3,padx = "5",pady = "1",sticky="w")
 
 
+#Camera Tab
+#-----------------------------------
+#scroll bar
+CamTab = ttk.Frame(tabPannel)
+
+position_Text_label = ttk.Label(CamTab, text="position (X,Y,Z) : ")
+position_Text_label.grid(column=0, row=0,padx = "5",pady = "1",sticky="w")
+
+x_textVariable = StringVar()
+x_textVariable.set(parameters["cam_x"])
+x_Entry = ttk.Entry(CamTab,textvariable = x_textVariable)
+x_Entry.grid(column=1, row=0,padx = "5",pady = "1",sticky="w")
+
+y_textVariable = StringVar()
+y_textVariable.set(parameters["cam_y"])
+y_Entry = ttk.Entry(CamTab,textvariable = y_textVariable)
+y_Entry.grid(column=2, row=0,padx = "5",pady = "1",sticky="w")
+
+z_textVariable = StringVar()
+z_textVariable.set(parameters["cam_z"])
+z_Entry = ttk.Entry(CamTab,textvariable = z_textVariable)
+z_Entry.grid(column=3, row=0,padx = "5",pady = "1",sticky="w")
+
+orientation_Text_label = ttk.Label(CamTab, text="orientation (X,Y,Z) : ")
+orientation_Text_label.grid(column=0, row=1,padx = "5",pady = "1",sticky="w")
+
+rx_textVariable = StringVar()
+rx_textVariable.set(parameters["cam_rx"])
+rx_Entry = ttk.Entry(CamTab,textvariable = rx_textVariable)
+rx_Entry.grid(column=1, row=1,padx = "5",pady = "1",sticky="w")
+
+ry_textVariable = StringVar()
+ry_textVariable.set(parameters["cam_ry"])
+ry_Entry = ttk.Entry(CamTab,textvariable = ry_textVariable)
+ry_Entry.grid(column=2, row=1,padx = "5",pady = "1",sticky="w")
+
+rz_textVariable = StringVar()
+rz_textVariable.set(parameters["cam_rz"])
+rz_Entry = ttk.Entry(CamTab,textvariable = rz_textVariable)
+rz_Entry.grid(column=3, row=1,padx = "5",pady = "1",sticky="w")
 
 tabPannel.add(SceneTab, text="Scene")
+tabPannel.add(CamTab, text="Camera")
 tabPannel.add(MatTab, text="Material")
+
 tabPannel.pack(expand=1,fill="both")
 
 #-----------------------------
