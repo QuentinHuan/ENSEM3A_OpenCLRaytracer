@@ -6,7 +6,7 @@ Last version was more of a prototype and wasn't really usable in practice. The g
 
 Technologies: PyOpenCL, Tkinter
 
-![alt text](screenshot.png)
+![alt text](/screenshots/screenshot.png)
 
 I plan to implement :
 
@@ -19,4 +19,6 @@ I plan to implement :
 -material system editing in UI [DONE]
 
 -Image based lighting [DONE]
+
+![alt text](/screenshots/IBL.png)
 
