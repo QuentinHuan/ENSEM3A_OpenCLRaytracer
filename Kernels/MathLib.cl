@@ -122,12 +122,12 @@ hitInfo intersect(tri T, ray r)
     f = 1.0 / a;
     s = r.o - T.a.p;
     u = f * dot(s, h);
-    if (u < 0.0 || u > 1.0)
+    if (u < 0.0 || u > 1.0) // outside of triangle
         return output;
 
     q = cross(s, edge1);
     v = f * dot(r.dir, q);
-    if (v < 0.0 || u + v > 1.0)
+    if (v < 0.0 || u + v > 1.0) // outside of triangle
         return output;
     // At this stage we can compute t to find out where the intersection point is on the line.
     float k = f * dot(edge2, q);
@@ -213,6 +213,12 @@ tri makeTri(int index,__constant float *vertex_p,__constant float *vertex_n,__co
 hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv, __constant int *face_data,const int triCount,__constant float *BVH)
 {
     hitInfo H;
+    H.n = (float3)(0,0,0);
+    H.uv = (float2)(0,0);
+    H.k = 1000.0f;
+    H.mat = 0;
+    H.bHit = false;
+
     hitInfo HTemp;
 
     //BVH tree traversal:
@@ -233,10 +239,9 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
                     //traitement
                     tri T = makeTri((int)(BVH[9*curr+8]),vertex_p,vertex_n,vertex_uv,face_data,triCount);
                     
-                    if(m==0) H = intersect(T, r);
-                    else HTemp = intersect(T, r);
-                    m=m+1;
-                    if(HTemp.bHit && HTemp.k < H.k && HTemp.k > 0.0f)
+                    HTemp = intersect(T, r);
+                   
+                    if(HTemp.bHit && HTemp.k < H.k && HTemp.k > 0.0001f)
                     {
                         H=HTemp;
                     }
@@ -255,7 +260,7 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
 
         }
     //printf("m=%d",m);
-    if(H.k <= 0.0f)
+    if(H.k <= 0.0001f)
     {
         H.bHit = false;
         H.k = 0.0f;
@@ -336,18 +341,18 @@ static float3 rand_hemi_cosine(float3 dir, unsigned int *seed0, unsigned int *se
     }
 
     *invPdf = 2.0f*3.14f;
-    return normalize(worldV);
+    return worldV;
 } 
 
-static float3 rand_sample_GGX(material m, float3 n, float3 v, unsigned int *seed0, unsigned int *seed1, float *invPdf)
+static float3 rand_sample_GGX(material m, float3 v, float3 n, unsigned int *seed0, unsigned int *seed1, float *invPdf)
 {
 
     //GGX
     float alphaSqr = (pown(m.roughness,2));
+    //float alphaSqr = 10.0f;
     float u = rand(seed0,seed1);				//[0,1]
-    float phi = rand(seed0,seed1) * 2 * 3.14; //[0,2pi]
-    float theta = acos(sqrt((1.0f - u)/((pown(m.roughness,2) - 1.0f) * u + 1.0f)));
-
+    float phi = rand(seed0,seed1) * 1.0f * 3.14f; //[0,2pi]
+    float theta = acos(sqrt((1.0f - u)/((alphaSqr - 1.0f) * u + 1.0f)));
     float st = sin(theta);
     float3 localV = (float3)(st * cos(phi), st * sin(phi), cos(theta));
 
@@ -356,15 +361,15 @@ static float3 rand_sample_GGX(material m, float3 n, float3 v, unsigned int *seed
     float3 l = worldV * 2.0f * dot(v, worldV) - v;
     float D = alphaSqr /
                 (3.14f * pown(pown(fmax(dot(n, worldV), 0.0f), 2) * (alphaSqr - 1.0f) + 1.0f, 2));
-    *invPdf = (4.0f * fabs(dot(worldV, v))) / (D * dot(worldV, n));
-    return normalize(worldV);
+    *invPdf = (1.0f * fabs(dot(worldV, v))) / (D * dot(worldV, n));
+    return worldV;
 
 } 
 
 static float3 rand_sample_Glass(float3 v, float *invPdf)
 {
-    *invPdf = 1;
-    return normalize(v);
+    *invPdf = 1.0f;
+    return v;
 } 
 
 //------------
@@ -379,8 +384,9 @@ static float3 rand_sample_Glass(float3 v, float *invPdf)
 		//----------------------||
 		//  Specular Component
 		//----------------------||
-		float D = pown(m.roughness,2) /
-				  (3.14f * pown(pown(fmax(dot(n, h), 0.0f), 2) * (pown(m.roughness,2) - 1.0f) + 1.0f, 2));
+        float alphaSqr = (pown(m.roughness,2));
+		float D = alphaSqr /
+				  (3.14f * pown(pown(fmax(dot(n, h), 0.0f), 2) * (alphaSqr - 1.0f) + 1.0f, 2));
 
 		float NdotV = fmax(dot(n, v), 0.0f);
 		float k = m.roughness * sqrt(2.0f / 3.14f);

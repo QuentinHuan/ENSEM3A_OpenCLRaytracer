@@ -22,7 +22,7 @@ void printVec(float3 v) {
 float3 sampleIBL(float3 dir,sampler_t sampler, __read_only image2d_t IBL)
 {
     float2 uv = SampleSphericalMap(dir);
-    float4 pix = read_imagef(IBL, sampler, (int2)(uv.x*600,uv.y*300));
+    float4 pix = read_imagef(IBL, sampler, (int2)(uv.x*8000,uv.y*4000));
 
     return 1.0f*pix.xyz;
     //return (float3)(0.3f,0.3f,0.3f);
@@ -129,18 +129,21 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                     case 3://Glass
                         R_bounce.dir = rand_sample_Glass(R_cam.dir, &invPdfBounce);
                         BRDF = BRDF_Glass(camMat);
-                        signG = sign(dot(H_cam.n,R_bounce.dir));
+                        //invPdfBounce = (1.0f)/fabs(dot(R_bounce.dir, normalize(H_cam.n)));
+                        signG = -sign(dot(H_cam.n,R_bounce.dir));
+                        //printf("%f",signG);
+                        //signG = -1;
                         break;
                 }
 
-                R_bounce.o = (R_cam.o + (normalize(R_cam.dir) * H_cam.k)) + (normalize(H_cam.n) * epsilon * (signG));//sign(dot(H_cam.n,R_bounce.dir)))
-
+                R_bounce.o = (R_cam.o + (normalize(R_cam.dir) * H_cam.k)) + 0.0f*(normalize(H_cam.n) * epsilon * (signG));//sign(dot(H_cam.n,R_bounce.dir)))
+                //R_bounce.dir = -R_bounce.dir;
                 // next ray shoot
                 hitInfo H_bounce = rayTrace(R_bounce, vertex_p, vertex_n, vertex_uv, face_data, triCount,BVH);
                 material bounceMat = extractMaterial(mat, H_bounce.mat);
 
                 // attenuation calculation
-                float att = invPdfBounce * dot(R_bounce.dir, normalize(H_cam.n));
+                float att = invPdfBounce * fabs(dot(R_bounce.dir, normalize(H_cam.n)));
 
                 if (H_bounce.bHit) // hit something solid
                 {
@@ -153,7 +156,7 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
                     if (bounceMat.type != 0) //not emissive surface
                     {
                         //max bounce reach, sample is nullified
-                        if (j == maxBounce && bounceMat.type !=3) 
+                        if (j == maxBounce) 
                         {
                             sampleOut = 0;
                             break;

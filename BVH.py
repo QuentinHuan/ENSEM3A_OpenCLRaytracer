@@ -49,24 +49,24 @@ class Node(object):
         vMax = np.zeros((3,1))
         if len(self.array) == 0:
             return Box(vMin,vMax)
+        else:
+            #each triangle
+            for t in self.array:
+                #each vertex
+                for id in range(7,10):
+                    X.append(self.V_p[3*t[id]+0])
+                    Y.append(self.V_p[3*t[id]+1])
+                    Z.append(self.V_p[3*t[id]+2])
 
-        #each triangle
-        for t in self.array:
-            #each vertex
-            for id in range(7,10):
-                X.append(self.V_p[3*t[id]+0])
-                Y.append(self.V_p[3*t[id]+1])
-                Z.append(self.V_p[3*t[id]+2])
+            vMin[0] = np.min(X)-epsilon
+            vMin[1] = np.min(Y)-epsilon
+            vMin[2] = np.min(Z)-epsilon
 
-        vMin[0] = np.min(X)-epsilon
-        vMin[1] = np.min(Y)-epsilon
-        vMin[2] = np.min(Z)-epsilon
+            vMax[0] = np.max(X)+epsilon
+            vMax[1] = np.max(Y)+epsilon
+            vMax[2] = np.max(Z)+epsilon
 
-        vMax[0] = np.max(X)+epsilon
-        vMax[1] = np.max(Y)+epsilon
-        vMax[2] = np.max(Z)+epsilon
-
-        return Box(vMin,vMax)
+            return Box(vMin,vMax)
 
     #split a Node in two
     def split(self,BVH):
@@ -79,17 +79,21 @@ class Node(object):
             mean = np.zeros((3,1))
             #compute mean
             c = 0
-            for t in self.array:
-                mean = mean + self.computeTriCenter(t)
-                c = c+1
-            mean = mean / c 
+            self.L = []
 
-            #compute variance
-            c = 0
             for t in self.array:
-                var = var + (self.computeTriCenter(t)-mean)**2
-                c=c+1
-            var = var / c
+                self.L.append(self.computeTriCenter(t))
+
+            """ for v in L:
+                mean = mean + v
+            mean = mean / len(L) """
+            mean = np.mean(self.L,axis=0)
+
+            """ #compute variance
+            for v in L:
+                var = var + (v-mean)**2
+            var = var / len(L) """
+            var = np.var(self.L,axis=0)
 
             #split onlong the maximum variance axis, on the mean centroid value
             #find the split axis
@@ -105,11 +109,11 @@ class Node(object):
             arrayR = []
             arrayL = []
 
-            for t in self.array:
-                if self.computeTriCenter(t)[splitAxis] < splitPivot:
-                    arrayL.append(t)
+            for i in range(len(self.L)):
+                if self.L[i][splitAxis] < splitPivot:
+                    arrayL.append(self.array[i])
                 else:
-                    arrayR.append(t)
+                    arrayR.append(self.array[i])
             BVH.addNode(Node(arrayL,self.V_p))
             BVH.addNode(Node(arrayR,self.V_p))
             self.addChild(BVH.NodeCounter-2,BVH.NodeCounter-1)
@@ -133,6 +137,7 @@ class BVH(object):
         self.counter = -1
         self.NodeCounter = 0
         self.nodeList = []
+        self.tempL = []
         
         for i in range(0,int(len(faceData)/10)):
             t = []

@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from time import time
 
 #----------------------------------
 #   SCENE IMPORTER
@@ -279,7 +280,7 @@ class Scene(object):
         print("==> DONE\n")
 
     #path is the .obj file path
-    def __init__(self,path):
+    def __init__(self,path,buildBVH):
         self.V_p = []
         self.V_n = []
         self.V_uv = []
@@ -299,7 +300,12 @@ class Scene(object):
         self.importSceneGeometry(path)
         self.config = configReader(path.replace(".obj",".ini"),self.materialCount)
         self.importMaterialData()
-        self.BVH = BVH(self.faceData,self.V_p)
+        if buildBVH:
+            print("start BVH building")
+            timeBVH = time()
+            self.BVH = BVH(self.faceData,self.V_p)
+            timeBVH = abs(timeBVH - time())
+            print("BVH building done in " + str(timeBVH))
 
         #self.test()
 

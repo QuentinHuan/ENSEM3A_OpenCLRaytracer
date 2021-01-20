@@ -65,13 +65,8 @@ def main(scene):
     #         IBL texture
     #--------------------------------#
     # load and convert source image
-    src_img = Image.open('IBL/Arches_E_PineTree_Preview.jpg').convert("RGBA")  # This example code only works with RGBA images
+    src_img = Image.open('IBL/Arches_E_PineTree_8k.jpg').convert("RGBA")  # This example code only works with RGBA images
     h_IBL = src_img
-
-
-
-
-
 
     #--------------------------------#
     #          Computation

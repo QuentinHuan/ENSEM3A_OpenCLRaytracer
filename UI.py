@@ -59,7 +59,7 @@ def openObjFile(*args):
         f.write("scenePath="+file.name)
         f.close()
 
-        scene = Scene(file.name)
+        scene = Scene(file.name,False)
         return NONE
     else:
         print("no .obj file")
@@ -76,7 +76,7 @@ def render(*args):
     arg_Callback()
     path = parameters["sceneFile"]
     print("ask to renderer scene '" + path + "'")
-    scene = Scene(path)
+    scene = Scene(path,True)
 
     main(scene)
     load = Image.open("output/out.png")
@@ -142,7 +142,9 @@ bg = style.lookup('TFrame', 'background')
 f = open("config.ini","r")
 scenePath = f.readline().split("=")[1]
 #load and build scene
-scene = Scene(scenePath)
+
+scene = Scene(scenePath,False)
+
 #load config
 config = scene.config
 parameters = {}
