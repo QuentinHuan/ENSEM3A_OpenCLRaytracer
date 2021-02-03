@@ -349,6 +349,7 @@ cam_z=0
 cam_rx=0
 cam_ry=0
 cam_rz=0
+cam_DOF=45
 """)
             f.close()
             for i in range(materialCount+1):

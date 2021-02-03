@@ -58,7 +58,7 @@ def main(scene):
     # |x  x   x|x   x   x|  x |  x | x   | x |
     cam = np.array([float(parameters["cam_x"]), float(parameters["cam_y"]), float(parameters["cam_z"]),
                     float(parameters["cam_rx"]), float(parameters["cam_ry"]), float(parameters["cam_rz"]),
-                    imgResolution, imgResolution, 1, 3.14/4.0]).astype(np.float32)
+                    imgResolution, imgResolution, 1, float(parameters["cam_DOF"])*(3.14/180)]).astype(np.float32)
 
 
     #--------------------------------#
