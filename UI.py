@@ -66,6 +66,23 @@ def openObjFile(*args):
         print("no .obj file")
         return NONE
 
+#Explorer Widget
+#get the path the .obj file to render, store it in 'sceneFilePath'
+#save the path in the file 'config.ini' for next time
+def openIBLFile(*args):
+    global scene
+    file = askopenfile(mode ='r', filetypes =[('jpg files', '*.jpg')]) 
+    if file is not None: 
+        IBLFilePath.set(file.name)
+        scene.config.setParameter("IBLfile",file.name)
+        updateParameters()
+        f.close()
+        return NONE
+    else:
+        print("no .jpg file")
+        return NONE
+
+
 #reload parameters from file
 def updateParameters():
     global parameters
@@ -129,6 +146,13 @@ def arg_Callback(*args):
     scene.config.setParameter("cam_rz",rz_Entry.entry.get())
 
     scene.config.setParameter("cam_DOF",DOF_Entry.entry.get())
+
+    scene.config.setParameter("IBL_Power",IBL_Power_Entry.entry.get())
+
+    scene.config.setParameter("sun_rx",dx_Sun_Entry.entry.get())
+    scene.config.setParameter("sun_ry",dy_Sun_Entry.entry.get())
+    scene.config.setParameter("sun_rz",dz_Sun_Entry.entry.get())
+    scene.config.setParameter("sun_Power",Sun_Power_Entry.entry.get())
 
     for i in range(len(MatParamEntry)):
         #get alpha entry value
@@ -257,6 +281,7 @@ except IOError as error:
 
 #scene Tab
 #-----------------------------------
+#browse object button
 sceneFilePath = StringVar()
 sceneFilePath.set(parameters["sceneFile"])
 sceneFilePath_Text_label = ttk.Label(SceneTab, text="scene file path : ").grid(column=0, row=0,padx = "5",pady = "1",sticky="w")
@@ -308,8 +333,39 @@ DOF_Text_label.grid(column=0, row=2,padx = "5",pady = "1",sticky="w")
 
 DOF_Entry = param_Entry(CamTab,parameters,"cam_DOF",1,2)
 
+#Environnement Tab
+#-----------------------------------
+EnvTab = ttk.Frame(tabPannel)
+
+#IBL file
+IBLFilePath = StringVar()
+IBLFilePath.set(parameters["IBLfile"])
+IBLFilePath_Text_label = ttk.Label(EnvTab, text="IBL file path : ").grid(column=0, row=0,padx = "5",pady = "1",sticky="w")
+IBLFilePath_label = ttk.Label(EnvTab, textvariable=IBLFilePath,relief="sunken",borderwidth = 5).grid(column=1, row=0,padx = "5",pady = "1",sticky="w")
+IBLFilePath_button = ttk.Button(EnvTab, text='Browse', command=openIBLFile).grid(column=2, row=0,padx = "5",pady = "1",sticky="w")
+
+#IBL Power
+IBL_Power_Text_label = ttk.Label(EnvTab, text="IBL Power : ")
+IBL_Power_Text_label.grid(column=0, row=1,padx = "5",pady = "1",sticky="w")
+IBL_Power_Entry = param_Entry(EnvTab,parameters,"IBL_Power",1,1)
+
+#Sun Direction
+Sun_dir_Text_label = ttk.Label(EnvTab, text="Sun direction (X,Y,Z) : ")
+Sun_dir_Text_label.grid(column=0, row=2,padx = "5",pady = "1",sticky="w")
+
+dx_Sun_Entry = param_Entry(EnvTab,parameters,"sun_rx",1,2)
+dy_Sun_Entry = param_Entry(EnvTab,parameters,"sun_ry",2,2)
+dz_Sun_Entry = param_Entry(EnvTab,parameters,"sun_rz",3,2)
+
+#Sun Power
+Sun_Power_Text_label = ttk.Label(EnvTab, text="Sun Power (X,Y,Z) : ")
+Sun_Power_Text_label.grid(column=0, row=3,padx = "5",pady = "1",sticky="w")
+Sun_Power_Entry = param_Entry(EnvTab,parameters,"sun_Power",1,3)
+
+# add tabs
 tabPannel.add(SceneTab, text="Scene")
 tabPannel.add(CamTab, text="Camera")
+tabPannel.add(EnvTab, text="Environement")
 tabPannel.add(MatTab, text="Material")
 
 tabPannel.pack(expand=1,fill="both")

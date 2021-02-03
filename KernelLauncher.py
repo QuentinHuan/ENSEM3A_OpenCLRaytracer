@@ -28,9 +28,9 @@ class KernelLauncher(object):
         RaytracerProgram = RaytracerProgram.build(options=['-I', "Kernels"])
         self.K_Raytracing = RaytracerProgram.Raytracing
         self.K_Raytracing.set_scalar_arg_dtypes(
-            [None, None, None, None, None, None, None ,None, np.uint32, np.uint32, np.uint32, np.uint32, None])
+            [None, None, None, None, None, None, None ,None,None ,None, np.uint32,np.uint32, np.uint32, np.uint32, np.uint32, None])
 
-    def launch_Raytracing(self, h_img_out, h_vertex_p,h_vertex_n,h_vertex_uv, h_face_data, h_material_data, h_BVH, h_cam, imgDim,spp,maxBounce,h_IBL):
+    def launch_Raytracing(self, h_img_out, h_vertex_p,h_vertex_n,h_vertex_uv, h_face_data, h_material_data,h_light_data, h_BVH, h_cam, h_envData, imgDim,spp,maxBounce,h_IBL):
 
         #         device buffers
         # --------------------------
@@ -56,20 +56,25 @@ class KernelLauncher(object):
         d_cam = cl.Buffer(self.context, cl.mem_flags.READ_ONLY |
                           cl.mem_flags.COPY_HOST_PTR, hostbuf=h_cam)
 
+        #environnement
+        d_envData = cl.Buffer(self.context, cl.mem_flags.READ_ONLY |
+                          cl.mem_flags.COPY_HOST_PTR, hostbuf=h_envData)
+
+        #light
+        if(len(h_light_data)==0):
+            d_lightData = cl.Buffer(self.context, cl.mem_flags.READ_ONLY |
+                          cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array([0]))
+        else:
+            d_lightData = cl.Buffer(self.context, cl.mem_flags.READ_ONLY |
+                            cl.mem_flags.COPY_HOST_PTR, hostbuf=h_light_data)
         #IBL
-        # build a 2D OpenCL Image from the numpy array
-        #src_buf = cl.image_from_array(self.context, h_IBL, 4)
-            # get size of source image (note height is stored at index 0)
-        #h = h_IBL.shape[0]
-        #w = h_IBL.shape[1]
-        # build destination OpenCL Image
         fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.UNORM_INT8)
-        #d_IBL = cl.image_from_array(self.context, h_IBL, 4)
         d_IBL = cl.Image(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,fmt,h_IBL.size,None,h_IBL.tobytes())
-        #d_IBL = src_buf
+
         triCount = int(len(h_face_data)/10)
-        self.K_Raytracing(self.queue, (imgDim,), None, d_img_out, d_vertex_p, d_vertex_n, d_vertex_uv, d_face_data,
-                          d_material_data, d_BVH, d_cam, triCount, imgDim, spp, maxBounce, d_IBL)
+        lightCount = int(len(h_light_data))
+        self.K_Raytracing(self.queue, (imgDim,), None, d_img_out, d_vertex_p, d_vertex_n, d_vertex_uv, d_face_data,d_lightData,
+                          d_material_data, d_BVH, d_cam, d_envData, triCount,lightCount, imgDim, spp, maxBounce, d_IBL)
         cl.enqueue_copy(self.queue, h_img_out, d_img_out)
 
         d_img_out.release()

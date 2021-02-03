@@ -394,6 +394,66 @@ static float3 rand_sample_Glass(float3 v, float *invPdf)
     return v;
 } 
 
+
+float Tri_area(tri t)
+{
+	float3 u = t.a.p - t.b.p, v = t.a.p - t.c.p;
+	return length(cross(u, v))/2.0;
+}
+
+float3 uniformRndInTriangle(tri t, unsigned int *seed0, unsigned int *seed1)
+{
+	float u1 = rand(seed0,seed1);
+	float u2 = rand(seed0,seed1);
+
+	float s = sqrt(u1);
+	float x = 1.0f - s;
+	float y = u2 * s;
+	float3 U = t.b.p - t.a.p;
+	float3 V = t.c.p - t.a.p;
+	float3 v = t.a.p + (U * x + V * y);
+	return v;
+}
+
+//direct light sampling
+static float3 sampleLight(float3 hitPos,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv,
+ __constant int *face_data,const int triCount,__constant int *light_data,const int lightCount,unsigned int *seed0,
+  unsigned int *seed1, float *invPDF,__global float *envData)
+{
+    float3 n;
+	if (lightCount>0)
+	{
+		int r = convert_int_rte(rand(seed0,seed1)*(lightCount+1));
+        if(r == lightCount)//sample sun
+        {
+            n = (float3)(1);
+            n = rotateVec(envData[0]*(3.14f/180.0f),(float3)(1,0,0),n); // x angle
+            n = rotateVec(envData[1]*(3.14f/180.0f),(float3)(0,1,0),n); // y angle
+            n = rotateVec(envData[2]*(3.14f/180.0f),(float3)(0,0,1),n); // z angle
+            *invPDF = lightCount+1;
+        }
+        else
+        {
+            tri t = makeTri(light_data[r],vertex_p,vertex_n,vertex_uv,face_data,triCount);
+            n = (uniformRndInTriangle(t,seed1,seed0) - hitPos);
+            n = normalize(n);
+            *invPDF = (lightCount+1)*envData[4] * (fmax(dot(t.a.n, -n), 0.0f)) * (Tri_area(t) / pown(length(n),2));
+        }
+		
+		return n;
+	}
+	else
+    {
+		    n = (float3)(1);
+            n = rotateVec(envData[0]*(3.14f/180.0f),(float3)(1,0,0),n); // x angle
+            n = rotateVec(envData[1]*(3.14f/180.0f),(float3)(0,1,0),n); // y angle
+            n = rotateVec(envData[2]*(3.14f/180.0f),(float3)(0,0,1),n); // z angle
+            *invPDF = (lightCount+1)*envData[3];
+            return n;
+    }
+}
+
+
 //------------
 //    BRDF
 //------------
