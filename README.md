@@ -10,9 +10,9 @@ Technologies: PyOpenCL, Tkinter
 
 I plan to implement :
 
--Diffuse, Glossy and Transparent materials [glossy and transparent not working yet]
+-Diffuse, Glossy and Transparent materials [DONE (but can be improved)]
 
--BVH acceleration structure [DONE]
+-BVH acceleration structure [DONE (but can be improved)]
 
 -texture (UV Mapping) [ToDo]
 
