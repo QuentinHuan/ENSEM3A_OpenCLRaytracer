@@ -1,8 +1,7 @@
 import numpy as np
 from numpy.core.defchararray import array
-
-
-
+import sys
+#box data structure
 class Box(object):
     def __init__(self,min,max):
         self.min = min
@@ -40,6 +39,7 @@ class Node(object):
 
         return (a+b+c)/3
 
+    #bounding box from triangle inside node
     def computeBoundingBox(self):
         epsilon = 0
         X = []
@@ -47,6 +47,7 @@ class Node(object):
         Z = []
         vMin = np.zeros((3,1))
         vMax = np.zeros((3,1))
+
         if len(self.array) == 0:
             return Box(vMin,vMax)
         else:
@@ -68,31 +69,20 @@ class Node(object):
 
             return Box(vMin,vMax)
 
-    #split a Node in two
+    #split a Node in two child nodes
     def split(self,BVH):
         #split interrior node
         if(len(self.array)>1):
             #---------------------
             #split method
             #---------------------
-            var = np.zeros((3,1))
-            mean = np.zeros((3,1))
             #compute mean
-            c = 0
             self.L = []
 
             for t in self.array:
                 self.L.append(self.computeTriCenter(t))
 
-            """ for v in L:
-                mean = mean + v
-            mean = mean / len(L) """
             mean = np.mean(self.L,axis=0)
-
-            """ #compute variance
-            for v in L:
-                var = var + (v-mean)**2
-            var = var / len(L) """
             var = np.var(self.L,axis=0)
 
             #split onlong the maximum variance axis, on the mean centroid value
@@ -126,11 +116,11 @@ class Node(object):
             self.computeBoundingBox()
             return
 
+#node tree representing the BVH
 class BVH(object):
 
-    #interior node
-    #
     def __init__(self, faceData, V_p):
+        sys.setrecursionlimit(100000)
         self.V_p = V_p
         self.triangleList = []
         self.exportArray = []
@@ -139,6 +129,7 @@ class BVH(object):
         self.nodeList = []
         self.tempL = []
         
+        #build triangle list, each line represent a tri
         for i in range(0,int(len(faceData)/10)):
             t = []
             for j in range(0,10):
@@ -149,6 +140,7 @@ class BVH(object):
         self.root = Node(self.triangleList,self.V_p)
         self.addNode(self.root)
         self.build(self.root)
+        print("build done")
         self.exportToKernelFormat()
 
     #build the BVH tree recursively
@@ -161,8 +153,11 @@ class BVH(object):
             return
         
         else: #leaf node, stop here
-            node.box = node.computeBoundingBox()
-            return
+            if(len(node.array)==0): return
+            else:
+                node.box = node.computeBoundingBox()
+                print(str(100 * (self.NodeCounter/(2*(len(self.triangleList))-1))) + "%")
+                return
 
     #write the tree as an array usable by the OpenCl kernel
     def exportToKernelFormat(self):
@@ -171,15 +166,11 @@ class BVH(object):
         self.exportArray = np.reshape(self.exportArray,(1,len(self.exportArray)*9))[0]
         print("heoo")
 
-    def add(self):
-        self.counter = self.counter + 1
-
     def addNode(self,node):
-        self.nodeList.append(node)
-        self.NodeCounter = self.NodeCounter + 1
+        if(len(node.array) > 0):
+            self.nodeList.append(node)
+            self.NodeCounter = self.NodeCounter + 1
         
-
-
     def recursiveRead(self):
         for i in range(0,len(self.nodeList)):
             L = []

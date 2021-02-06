@@ -8,7 +8,8 @@ from main import *
 import numpy as np
 from FileManager import Scene
 from functools import partial
-from scrollableFrame import ScrollableFrame
+from UI_elements import ScrollableFrame
+from UI_elements import param_Entry
 #-----------------------------
 #           Utilities
 #-----------------------------
@@ -59,11 +60,28 @@ def openObjFile(*args):
         f.write("scenePath="+file.name)
         f.close()
 
-        scene = Scene(file.name,False)
+        scene = Scene(file.name,True,scene.BVH)
         return NONE
     else:
         print("no .obj file")
         return NONE
+
+#Explorer Widget
+#get the path the .obj file to render, store it in 'sceneFilePath'
+#save the path in the file 'config.ini' for next time
+def openIBLFile(*args):
+    global scene
+    file = askopenfile(mode ='r', filetypes =[('jpg files', '*.jpg')]) 
+    if file is not None: 
+        IBLFilePath.set(file.name)
+        scene.config.setParameter("IBLfile",file.name)
+        updateParameters()
+        f.close()
+        return NONE
+    else:
+        print("no .jpg file")
+        return NONE
+
 
 #reload parameters from file
 def updateParameters():
@@ -73,10 +91,11 @@ def updateParameters():
 #render the scene at 'sceneFilePath' using the main script
 def render(*args):
     global RenderImage_Label
+    global scene
     arg_Callback()
     path = parameters["sceneFile"]
     print("ask to renderer scene '" + path + "'")
-    scene = Scene(path,True)
+    scene = Scene(path,False,scene.BVH)
 
     main(scene)
     load = Image.open("output/out.png")
@@ -109,6 +128,7 @@ def Material_Spinbox_Callback(matId):
     #update spinbox textLabel
     MatTypeLabel[matId].configure(text= matType[int(MatTypeSelectors[matId].get())])
 
+
 #update material info and write changes to disk
 def arg_Callback(*args):
     #get entry values
@@ -118,13 +138,26 @@ def arg_Callback(*args):
     scene.config.setParameter("maxBounce",maxBounce_Entry.get())
 
     #camera settings
-    scene.config.setParameter("cam_x",x_Entry.get())
-    scene.config.setParameter("cam_y",y_Entry.get())
-    scene.config.setParameter("cam_z",z_Entry.get())
+    scene.config.setParameter("cam_x",x_Entry.entry.get())
+    scene.config.setParameter("cam_y",y_Entry.entry.get())
+    scene.config.setParameter("cam_z",z_Entry.entry.get())
 
-    scene.config.setParameter("cam_rx",rx_Entry.get())
-    scene.config.setParameter("cam_ry",ry_Entry.get())
-    scene.config.setParameter("cam_rz",rz_Entry.get())
+    scene.config.setParameter("cam_rx",rx_Entry.entry.get())
+    scene.config.setParameter("cam_ry",ry_Entry.entry.get())
+    scene.config.setParameter("cam_rz",rz_Entry.entry.get())
+
+    scene.config.setParameter("cam_DOF",DOF_Entry.entry.get())
+
+    scene.config.setParameter("IBL_Power",IBL_Power_Entry.entry.get())
+
+    scene.config.setParameter("sun_rx",dx_Sun_Entry.entry.get())
+    scene.config.setParameter("sun_ry",dy_Sun_Entry.entry.get())
+    scene.config.setParameter("sun_rz",dz_Sun_Entry.entry.get())
+    scene.config.setParameter("sun_Power",Sun_Power_Entry.entry.get())
+
+    for i in range(len(MatParamEntry)):
+        #get alpha entry value
+        scene.config.setParameter("M_"+str(i)+"_roughness",float(MatParamEntry[i].get()))
 
 #-----------------------------
 #           Init
@@ -141,22 +174,6 @@ bg = style.lookup('TFrame', 'background')
 #configReader Object
 f = open("config.ini","r")
 scenePath = f.readline().split("=")[1]
-#load and build scene
-
-scene = Scene(scenePath,False)
-
-#load config
-config = scene.config
-parameters = {}
-updateParameters()
-
-
-
-pickedColor = (0,0,0)
-
-matType = {0 : "emissive",1 : "Diffuse",2 : "Glossy",3 : "Glass"}
-
-
 
 #-----------------------------
 #Layout Setup
@@ -181,6 +198,23 @@ left_Top_frame.pack(side="left",fill='both',padx=5)
 right_frame = ttk.Labelframe(Top_frame,text="Output Image")
 right_frame.pack(side="right",fill='both',padx=5)
 
+
+#load and build scene
+
+scene = Scene(scenePath,True,None)
+
+#load config
+config = scene.config
+parameters = {}
+updateParameters()
+
+
+
+pickedColor = (0,0,0)
+
+matType = {0 : "emissive",1 : "Diffuse",2 : "Glossy",3 : "Glass"}
+
+
 #-----------------------------------
 #Left Top Side || configuration tab
 #-----------------------------------
@@ -197,14 +231,22 @@ MatTab = ttk.Frame(tabPannel)
 scrollFrame = ScrollableFrame(MatTab,bg)
 
 try:
-    MatTypeLabel = []
+
+    #color
     MatColorString = []
     MatButtons = []
+    #type selector
+    MatTypeLabel = []
     MatTypeSelectors = []
+    #parameter
+    MatParamEntry = []
+    MatParamLabel = []
+    MatParamString = []
 
     scrollFrame.frame.columnconfigure(0, weight=1)
     scrollFrame.frame.columnconfigure(1, weight=1)
     scrollFrame.frame.columnconfigure(2, weight=1)
+    scrollFrame.frame.columnconfigure(3, weight=1)
 
     for i in range(scene.materialCount+1):
 
@@ -225,6 +267,14 @@ try:
         MatTypeSelectors[i].set(int(parameters["M_"+str(i)+"_Type"]))
         MatTypeSelectors[i].grid(column=1, row=i,padx = "1",pady = "1",sticky=NSEW)
 
+        #param entry
+        MatParamString.append(StringVar())
+        MatParamString[i].set(parameters["M_"+str(i)+"_roughness"])
+        MatParamLabel.append(ttk.Label(scrollFrame.frame, text="alpha : "))
+        MatParamEntry.append(ttk.Entry(scrollFrame.frame,textvariable = MatParamString[i]))
+        MatParamEntry[i].grid(column=4, row=i,padx = "1",pady = "1",sticky=NSEW)
+        MatParamLabel[i].grid(column=3, row=i,padx = "1",pady = "1",sticky=NSEW)
+
         #color button
         MatButtons.append(Button(scrollFrame.frame, text='Color',command =  partial(colorPicker,MatColorString[i].get(),i),bg = MatColorString[i].get(),highlightthickness=1, highlightbackground="black"))
         MatButtons[i].grid(column = 2, row=i,padx = "1",pady = "1",sticky=NSEW)
@@ -235,6 +285,7 @@ except IOError as error:
 
 #scene Tab
 #-----------------------------------
+#browse object button
 sceneFilePath = StringVar()
 sceneFilePath.set(parameters["sceneFile"])
 sceneFilePath_Text_label = ttk.Label(SceneTab, text="scene file path : ").grid(column=0, row=0,padx = "5",pady = "1",sticky="w")
@@ -262,7 +313,6 @@ maxBounce_Text_label = ttk.Label(SceneTab, text="maximum bounce : ").grid(column
 maxBounce_Entry = ttk.Entry(SceneTab,textvariable = maxBounce_textVariable)
 maxBounce_Entry.grid(column=1, row=3,padx = "5",pady = "1",sticky="w")
 
-
 #Camera Tab
 #-----------------------------------
 #scroll bar
@@ -271,41 +321,55 @@ CamTab = ttk.Frame(tabPannel)
 position_Text_label = ttk.Label(CamTab, text="position (X,Y,Z) : ")
 position_Text_label.grid(column=0, row=0,padx = "5",pady = "1",sticky="w")
 
-x_textVariable = StringVar()
-x_textVariable.set(parameters["cam_x"])
-x_Entry = ttk.Entry(CamTab,textvariable = x_textVariable)
-x_Entry.grid(column=1, row=0,padx = "5",pady = "1",sticky="w")
-
-y_textVariable = StringVar()
-y_textVariable.set(parameters["cam_y"])
-y_Entry = ttk.Entry(CamTab,textvariable = y_textVariable)
-y_Entry.grid(column=2, row=0,padx = "5",pady = "1",sticky="w")
-
-z_textVariable = StringVar()
-z_textVariable.set(parameters["cam_z"])
-z_Entry = ttk.Entry(CamTab,textvariable = z_textVariable)
-z_Entry.grid(column=3, row=0,padx = "5",pady = "1",sticky="w")
+x_Entry = param_Entry(CamTab,parameters,"cam_x",1,0)
+y_Entry = param_Entry(CamTab,parameters,"cam_y",2,0)
+z_Entry = param_Entry(CamTab,parameters,"cam_z",3,0)
 
 orientation_Text_label = ttk.Label(CamTab, text="orientation (X,Y,Z) : ")
 orientation_Text_label.grid(column=0, row=1,padx = "5",pady = "1",sticky="w")
 
-rx_textVariable = StringVar()
-rx_textVariable.set(parameters["cam_rx"])
-rx_Entry = ttk.Entry(CamTab,textvariable = rx_textVariable)
-rx_Entry.grid(column=1, row=1,padx = "5",pady = "1",sticky="w")
+rx_Entry = param_Entry(CamTab,parameters,"cam_rx",1,1)
+ry_Entry = param_Entry(CamTab,parameters,"cam_ry",2,1)
+rz_Entry = param_Entry(CamTab,parameters,"cam_rz",3,1)
 
-ry_textVariable = StringVar()
-ry_textVariable.set(parameters["cam_ry"])
-ry_Entry = ttk.Entry(CamTab,textvariable = ry_textVariable)
-ry_Entry.grid(column=2, row=1,padx = "5",pady = "1",sticky="w")
+DOF_Text_label = ttk.Label(CamTab, text="Depth of field : ")
+DOF_Text_label.grid(column=0, row=2,padx = "5",pady = "1",sticky="w")
 
-rz_textVariable = StringVar()
-rz_textVariable.set(parameters["cam_rz"])
-rz_Entry = ttk.Entry(CamTab,textvariable = rz_textVariable)
-rz_Entry.grid(column=3, row=1,padx = "5",pady = "1",sticky="w")
+DOF_Entry = param_Entry(CamTab,parameters,"cam_DOF",1,2)
 
+#Environnement Tab
+#-----------------------------------
+EnvTab = ttk.Frame(tabPannel)
+
+#IBL file
+IBLFilePath = StringVar()
+IBLFilePath.set(parameters["IBLfile"])
+IBLFilePath_Text_label = ttk.Label(EnvTab, text="IBL file path : ").grid(column=0, row=0,padx = "5",pady = "1",sticky="w")
+IBLFilePath_label = ttk.Label(EnvTab, textvariable=IBLFilePath,relief="sunken",borderwidth = 5).grid(column=1, row=0,padx = "5",pady = "1",sticky="w")
+IBLFilePath_button = ttk.Button(EnvTab, text='Browse', command=openIBLFile).grid(column=2, row=0,padx = "5",pady = "1",sticky="w")
+
+#IBL Power
+IBL_Power_Text_label = ttk.Label(EnvTab, text="IBL Power : ")
+IBL_Power_Text_label.grid(column=0, row=1,padx = "5",pady = "1",sticky="w")
+IBL_Power_Entry = param_Entry(EnvTab,parameters,"IBL_Power",1,1)
+
+#Sun Direction
+Sun_dir_Text_label = ttk.Label(EnvTab, text="Sun direction (X,Y,Z) : ")
+Sun_dir_Text_label.grid(column=0, row=2,padx = "5",pady = "1",sticky="w")
+
+dx_Sun_Entry = param_Entry(EnvTab,parameters,"sun_rx",1,2)
+dy_Sun_Entry = param_Entry(EnvTab,parameters,"sun_ry",2,2)
+dz_Sun_Entry = param_Entry(EnvTab,parameters,"sun_rz",3,2)
+
+#Sun Power
+Sun_Power_Text_label = ttk.Label(EnvTab, text="Sun Power (X,Y,Z) : ")
+Sun_Power_Text_label.grid(column=0, row=3,padx = "5",pady = "1",sticky="w")
+Sun_Power_Entry = param_Entry(EnvTab,parameters,"sun_Power",1,3)
+
+# add tabs
 tabPannel.add(SceneTab, text="Scene")
 tabPannel.add(CamTab, text="Camera")
+tabPannel.add(EnvTab, text="Environement")
 tabPannel.add(MatTab, text="Material")
 
 tabPannel.pack(expand=1,fill="both")
@@ -321,12 +385,6 @@ Console = Text(Bot_frame,bg='black',fg='white')
 Console.pack(anchor=S,padx=10, pady=10,fill='both')
 redir=RedirectText(Console)
 sys.stdout = redir
-
-#-----------------------------
-#Left Top Side
-#-----------------------------
-#.grid(column=0, row=1,columnspan=3,pady = "5",padx = "5",sticky="nsew")
-#render button
 
 #-----------------------------
 #Right Top Side | Image output

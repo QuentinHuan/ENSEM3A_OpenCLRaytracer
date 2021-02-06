@@ -1,5 +1,8 @@
 #include "stack.cl"
 
+//--------------------
+//  data structures
+//--------------------
 typedef struct vertex
 {
     float2 uv;
@@ -41,14 +44,15 @@ typedef struct box
 } box;
 
 
-//------------
-//rotation
-//------------
+//-----------------------------------------------
+// quaternion implementation for vector rotation
+//-----------------------------------------------
+
 float4 quaternion_mult(float4 q, float4 p)
 {
     return (float4)(q.x * p.x - dot(q.yzw, p.yzw), q.yzw * p.x + p.yzw * q.x + cross(q.yzw, p.yzw));
 }
-
+//rotate a vector on axis "axis" by angle "angle" (rad)
 static float3 rotateVec(float angle, float3 axis, float3 vector)
 {
     //using quaternions
@@ -60,8 +64,11 @@ static float3 rotateVec(float angle, float3 axis, float3 vector)
     return (quaternion_mult(quaternion_mult(q,V), qinv)).yzw;
 }
 
-//IBL sampling
+//--------------
+// IBL sampling
+//--------------
 
+//pick a pixel in spherical space
 float2 SampleSphericalMap(float3 direction) {
     direction=rotateVec(90*(3.14f/180.0f),(float3)(1,0,0),direction);
     direction=rotateVec(90*(3.14f/180.0f),(float3)(0,1,0),direction);
@@ -72,11 +79,19 @@ float2 SampleSphericalMap(float3 direction) {
     return uv;
 }
 
+//sample environnement Image
+// need rework: hardcoded image size
+float3 sampleIBL(float3 dir,sampler_t sampler, __read_only image2d_t IBL)
+{
+    float2 uv = SampleSphericalMap(dir);
+    float4 pix = read_imagef(IBL, sampler, (int2)(uv.x*get_image_width(IBL),uv.y*get_image_height(IBL)));
+
+    return 1.0f*pix.xyz;
+}
 
 //----------------------------
 // BRDF space to global space
 //----------------------------
-
 float3 localToGlobal(float3 localV, float3 dir)
 {
     float3 worldV;
@@ -94,11 +109,11 @@ float3 localToGlobal(float3 localV, float3 dir)
     return worldV;
 }
 
-
-//---------------------
-//      intersect
-//---------------------
-//--> test intersections between Ray 'r' and Triangle 'T'
+//-----------------------
+// triangle intersection
+//-----------------------
+//test intersections between Ray 'r' and Triangle 'T'
+//return hitInfo structure
 hitInfo intersect(tri T, ray r)
 {
     const float EPSILON = 0.0000001;
@@ -147,6 +162,8 @@ hitInfo intersect(tri T, ray r)
 //---------------
 // BVH traversal
 //---------------
+
+// ray/box intersection
 bool intersectBox(ray r, box b)
 { 
     float tx1 = (b.min.x - r.o.x)/r.dir.x;
@@ -155,13 +172,12 @@ bool intersectBox(ray r, box b)
     float tmin = fmin(tx1, tx2);
     float tmax = fmax(tx1, tx2);
 
-    return tmax >= tmin;
-
     float ty1 = (b.min.y - r.o.y)/r.dir.y;
     float ty2 = (b.max.y - r.o.y)/r.dir.y;
 
     tmin = fmax(tmin, fmin(ty1, ty2));
     tmax = fmin(tmax, fmax(ty1, ty2));
+
 
     float tz1 = (b.min.z - r.o.z)/r.dir.z;
     float tz2 = (b.max.z - r.o.z)/r.dir.z;
@@ -169,9 +185,11 @@ bool intersectBox(ray r, box b)
     tmin = fmax(tmin, fmin(tz1, tz2));
     tmax = fmin(tmax, fmax(tz1, tz2));
 
+    return(tmax >= tmin);
 
 } 
 
+// node intersection : intersect with node box
 bool interNode(ray r, __constant float *BVH, int curr)
 {
     box b; 
@@ -180,13 +198,14 @@ bool interNode(ray r, __constant float *BVH, int curr)
     return intersectBox(r,b);
 }
 
-tri makeTri(int index,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv, __constant int *face_data,const int triCount)
+//helper function:
+//pack triangle data in a convenient data structure
+tri makeTri(int k,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv, __constant int *face_data,const int triCount)
 {
-        int k = index;
         tri T;
         T.m = (int)face_data[k*10];//material
+
         vertex V[3];
-        int c = 0;
         for (int j = 0; j < 3; j++) //iterate through 3 vertex
         {
             vertex v;
@@ -199,10 +218,12 @@ tri makeTri(int index,__constant float *vertex_p,__constant float *vertex_n,__co
             v.n = (float3)(vertex_n[nId*3 + 0], vertex_n[nId*3 + 1], vertex_n[nId*3 + 2]);
             v.p = (float3)(vertex_p[pId*3 + 0], vertex_p[pId*3 + 1], vertex_p[pId*3 + 2]);
 
-            V[c] = v;
-            c++;
+            V[j] = v;
         }
-        T.a = V[0];T.b = V[1];T.c = V[2];
+
+        T.a = V[0];
+        T.b = V[1];
+        T.c = V[2];
         return T;
 }
 
@@ -220,7 +241,6 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
     H.bHit = false;
 
     hitInfo HTemp;
-
     //BVH tree traversal:
     int curr = 0;
     int m =0;
@@ -238,7 +258,6 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
                 {
                     //traitement
                     tri T = makeTri((int)(BVH[9*curr+8]),vertex_p,vertex_n,vertex_uv,face_data,triCount);
-                    
                     HTemp = intersect(T, r);
                    
                     if(HTemp.bHit && HTemp.k < H.k && HTemp.k > 0.0001f)
@@ -259,7 +278,7 @@ hitInfo rayTrace(ray r,__constant float *vertex_p,__constant float *vertex_n,__c
             }
 
         }
-    //printf("m=%d",m);
+
     if(H.k <= 0.0001f)
     {
         H.bHit = false;
@@ -290,6 +309,7 @@ static float rand(unsigned int *seed0, unsigned int *seed1) {
 	return (res.f - 2.0f) / 2.0f;
 }
 
+//hemisphere sampling cosine distribution
 static float3 rand_hemi_cosine(float3 dir, unsigned int *seed0, unsigned int *seed1, float *invPdf)
 {
     //lambert cosine weighted
@@ -318,6 +338,7 @@ static float3 rand_hemi_cosine(float3 dir, unsigned int *seed0, unsigned int *se
     return l;
 }
 
+//hemisphere sampling uniform distribution
  static float3 rand_hemi_uniform(float3 dir, unsigned int *seed0, unsigned int *seed1, float *invPdf)
 {
     float phi = 2.0f*3.14f*(rand(seed0,seed1));
@@ -344,9 +365,9 @@ static float3 rand_hemi_cosine(float3 dir, unsigned int *seed0, unsigned int *se
     return worldV;
 } 
 
+//hemisphere sampling GGX distribution
 static float3 rand_sample_GGX(material m, float3 v, float3 n, unsigned int *seed0, unsigned int *seed1, float *invPdf)
 {
-
     //GGX
     float alphaSqr = (pown(m.roughness,2));
     //float alphaSqr = 10.0f;
@@ -363,58 +384,129 @@ static float3 rand_sample_GGX(material m, float3 v, float3 n, unsigned int *seed
                 (3.14f * pown(pown(fmax(dot(n, worldV), 0.0f), 2) * (alphaSqr - 1.0f) + 1.0f, 2));
     *invPdf = (1.0f * fabs(dot(worldV, v))) / (D * dot(worldV, n));
     return worldV;
-
 } 
 
+//hemisphere sampling Glass distribution
+//simply return the incoming ray 
 static float3 rand_sample_Glass(float3 v, float *invPdf)
 {
     *invPdf = 1.0f;
     return v;
 } 
 
+
+float Tri_area(tri t)
+{
+	float3 u = t.a.p - t.b.p, v = t.a.p - t.c.p;
+	return length(cross(u, v))/2.0;
+}
+
+float3 uniformRndInTriangle(tri t, unsigned int *seed0, unsigned int *seed1)
+{
+	float u1 = rand(seed0,seed1);
+	float u2 = rand(seed0,seed1);
+
+	float s = sqrt(u1);
+	float x = 1.0f - s;
+	float y = u2 * s;
+	float3 U = t.b.p - t.a.p;
+	float3 V = t.c.p - t.a.p;
+	float3 v = t.a.p + (U * x + V * y);
+	return v;
+}
+
+//direct light sampling
+static float3 sampleLight(float3 hitPos,__constant float *vertex_p,__constant float *vertex_n,__constant float *vertex_uv,
+ __constant int *face_data,const int triCount,__constant int *light_data,const int lightCount,unsigned int *seed0,
+  unsigned int *seed1, float *invPDF,__global float *envData)
+{
+    float3 n;
+	if (lightCount>0)
+	{
+		int r = convert_int_rte(rand(seed0,seed1)*(lightCount+1));
+        if(r == lightCount)//sample sun
+        {
+            n = (float3)(1);
+            n = rotateVec(envData[0]*(3.14f/180.0f),(float3)(1,0,0),n); // x angle
+            n = rotateVec(envData[1]*(3.14f/180.0f),(float3)(0,1,0),n); // y angle
+            n = rotateVec(envData[2]*(3.14f/180.0f),(float3)(0,0,1),n); // z angle
+            *invPDF = lightCount+1;
+        }
+        else
+        {
+            tri t = makeTri(light_data[0],vertex_p,vertex_n,vertex_uv,face_data,triCount);
+            n = (uniformRndInTriangle(t,seed1,seed0) - hitPos);
+            n = normalize(n);
+            *invPDF = (lightCount+1)*envData[4] * (fmax(dot(t.a.n, -n), 0.0f)) * (Tri_area(t) / pown(length(n),2));
+        }
+		
+		return n;
+	}
+	else
+    {
+		    n = (float3)(1);
+            n = rotateVec(envData[0]*(3.14f/180.0f),(float3)(1,0,0),n); // x angle
+            n = rotateVec(envData[1]*(3.14f/180.0f),(float3)(0,1,0),n); // y angle
+            n = rotateVec(envData[2]*(3.14f/180.0f),(float3)(0,0,1),n); // z angle
+            *invPDF = (lightCount+1)*envData[3];
+            return n;
+    }
+}
+
+
 //------------
 //    BRDF
 //------------
-	float3 BRDF_GGX(material m, float3 v, float3 l, float3 n)
-	{
-		//----------------------||
-		//        vectors
-		//----------------------||
-		float3 h = normalize(l + v);
-		//----------------------||
-		//  Specular Component
-		//----------------------||
-        float alphaSqr = (pown(m.roughness,2));
-		float D = alphaSqr /
-				  (3.14f * pown(pown(fmax(dot(n, h), 0.0f), 2) * (alphaSqr - 1.0f) + 1.0f, 2));
+//GGX BRDF
+float3 BRDF_GGX(material m, float3 v, float3 l, float3 n)
+{
+    //----------------------||
+    //        vectors
+    //----------------------||
+    float3 h = normalize(l + v);
+    //----------------------||
+    //  Specular Component
+    //----------------------||
+    float alphaSqr = (pown(m.roughness,2));
+    float D = alphaSqr /
+                (3.14f * pown(pown(fmax(dot(n, h), 0.0f), 2) * (alphaSqr - 1.0f) + 1.0f, 2));
 
-		float NdotV = fmax(dot(n, v), 0.0f);
-		float k = m.roughness * sqrt(2.0f / 3.14f);
-		float G1 = NdotV / (NdotV * (1.0f - k) + k);
+    float NdotV = fmax(dot(n, v), 0.0f);
+    float k = m.roughness * sqrt(2.0f / 3.14f);
+    float G1 = NdotV / (NdotV * (1.0f - k) + k);
 
-		float NdotL = fmax(dot(n, l), 0.0f);
-		float G2 = NdotL / (NdotL * (1.0f - k) + k);
-		float G = G1 * G2;
-		float F0 = 0.04f;
-		float F =
-			F0 + (1 - F0) * pown(1.0f - fmax(dot(h, v), 0.0f), 5);
+    float NdotL = fmax(dot(n, l), 0.0f);
+    float G2 = NdotL / (NdotL * (1.0f - k) + k);
+    float G = G1 * G2;
+    float F0 = 0.04f;
+    float F =
+        F0 + (1 - F0) * pown(1.0f - fmax(dot(h, v), 0.0f), 5);
 
-		float specular =(F * G * D) * (1.0f / fmax(4.0f * fmax(dot(v, n), 0.0f) * fmax(dot(l, n), 0.0f), 0.001f));
+    float specular =(F * G * D) * (1.0f / fmax(4.0f * fmax(dot(v, n), 0.0f) * fmax(dot(l, n), 0.0f), 0.001f));
 
-		//----------------------||
-		//   Diffuse Component
-		//----------------------||
-		float3 result = ((float3)(1.0f, 1.0f, 1.0f) * specular);
+    //----------------------||
+    //   Diffuse Component
+    //----------------------||
 
-		return result;
-	}
+    float3 kd = (float3)(1.0f) - F;
+    kd = kd * (1.0f - 0.5f);
 
-    float3 BRDF_Lambert(material m)
-	{
-		return (m.color * (1.0f / 3.14f));
-	}
+    float NdotOmega = fmax(dot(n, l), 0.0f);
+    float3 diffuse = kd * m.color / 3.14f;
 
-    float3 BRDF_Glass(material m)
-	{
-		return (m.color);
-	}
+    float3 result = (diffuse + specular);
+
+    return result;
+}
+
+//Lambert BRDF
+float3 BRDF_Lambert(material m)
+{
+    return (m.color * (1.0f / 3.14f));
+}
+
+//Glass BRDF
+float3 BRDF_Glass(material m)
+{
+    return (m.color);
+}

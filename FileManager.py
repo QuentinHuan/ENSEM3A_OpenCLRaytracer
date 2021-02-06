@@ -205,7 +205,49 @@ class Scene(object):
 
        
         
-        
+            #path is the .obj file path
+    def __init__(self,path,buildBVH,BVHCopy):
+        self.V_p = []
+        self.V_n = []
+        self.V_uv = []
+        #|mat|UVindex|Normal index|position index|
+        #| x |x  x  x|x    x     x|x      x     x|
+        self.faceData = []
+        self.faceData_ChunkSize = 10
+        # type | color | Roughness | ior |
+        # 1    | 1 1 1 | 1         | 1  
+        self.materialData = []
+        self.materialData_ChunkSize = 6
+
+        self.materialCount = 0
+        self.materialLength = []
+        #light triangle list
+        self.lightData = []
+
+        self.importSceneGeometry(path)
+
+        self.path = path
+        self.config = configReader(path.replace(".obj",".ini"),self.materialCount)
+
+        self.importMaterialData()
+
+        #light data building
+        for i in range(0,int(len(self.faceData)/self.faceData_ChunkSize)):
+            matId = self.faceData[i*self.faceData_ChunkSize]
+            if self.materialData[matId*self.materialData_ChunkSize + 0] == 0: #emissive triangle
+                self.lightData.append(i)#add the tri to the list
+
+        self.lightData = np.array(self.lightData).astype(np.int32)
+
+        if buildBVH:
+            print("start BVH building")
+            timeBVH = time()
+            self.BVH = BVH(self.faceData,self.V_p)
+            timeBVH = abs(timeBVH - time())
+            print("BVH building done in " + str(timeBVH))
+        else:
+            self.BVH = BVHCopy
+        #self.test()
 
 
     def importSceneGeometry(self,path):
@@ -249,6 +291,8 @@ class Scene(object):
         self.materialCount = matCounter
         print("==> DONE")
         
+
+
         print("import vertex data :")
         self.V_p = np.array(s.vertices).astype(np.float32)
         self.V_p = np.reshape(self.V_p,(1,len(self.V_p)*3))[0]
@@ -279,35 +323,7 @@ class Scene(object):
         self.materialData = np.array(self.materialData).astype(np.float32)
         print("==> DONE\n")
 
-    #path is the .obj file path
-    def __init__(self,path,buildBVH):
-        self.V_p = []
-        self.V_n = []
-        self.V_uv = []
-        #|mat|UVindex|Normal index|position index|
-        #| x |x  x  x|x    x     x|x      x     x|
-        self.faceData = []
-        self.faceData_ChunkSize = 10
-        # type | color | Roughness | ior |
-        # 1    | 1 1 1 | 1         | 1  
-        self.materialData = []
-        self.materialData_ChunkSize = 6
 
-        self.materialCount = 0
-        self.materialLength = []
-
-        self.path = path
-        self.importSceneGeometry(path)
-        self.config = configReader(path.replace(".obj",".ini"),self.materialCount)
-        self.importMaterialData()
-        if buildBVH:
-            print("start BVH building")
-            timeBVH = time()
-            self.BVH = BVH(self.faceData,self.V_p)
-            timeBVH = abs(timeBVH - time())
-            print("BVH building done in " + str(timeBVH))
-
-        #self.test()
 
     def loadParameters(self):
         return self.config.loadParameters()
@@ -349,6 +365,13 @@ cam_z=0
 cam_rx=0
 cam_ry=0
 cam_rz=0
+cam_DOF=45
+IBLfile=IBL/Arches_E_PineTree_8k.jpg
+IBL_Power=1.0
+sun_Power=1.0
+sun_rx=0
+sun_ry=0
+sun_rz=0
 """)
             f.close()
             for i in range(materialCount+1):
