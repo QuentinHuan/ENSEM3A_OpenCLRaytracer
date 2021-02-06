@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.core.defchararray import array
+import sys
 #box data structure
 class Box(object):
     def __init__(self,min,max):
@@ -119,6 +120,7 @@ class Node(object):
 class BVH(object):
 
     def __init__(self, faceData, V_p):
+        sys.setrecursionlimit(100000)
         self.V_p = V_p
         self.triangleList = []
         self.exportArray = []
@@ -138,6 +140,7 @@ class BVH(object):
         self.root = Node(self.triangleList,self.V_p)
         self.addNode(self.root)
         self.build(self.root)
+        print("build done")
         self.exportToKernelFormat()
 
     #build the BVH tree recursively
@@ -150,8 +153,11 @@ class BVH(object):
             return
         
         else: #leaf node, stop here
-            node.box = node.computeBoundingBox()
-            return
+            if(len(node.array)==0): return
+            else:
+                node.box = node.computeBoundingBox()
+                print(str(100 * (self.NodeCounter/(2*(len(self.triangleList))-1))) + "%")
+                return
 
     #write the tree as an array usable by the OpenCl kernel
     def exportToKernelFormat(self):
@@ -161,8 +167,9 @@ class BVH(object):
         print("heoo")
 
     def addNode(self,node):
-        self.nodeList.append(node)
-        self.NodeCounter = self.NodeCounter + 1
+        if(len(node.array) > 0):
+            self.nodeList.append(node)
+            self.NodeCounter = self.NodeCounter + 1
         
     def recursiveRead(self):
         for i in range(0,len(self.nodeList)):

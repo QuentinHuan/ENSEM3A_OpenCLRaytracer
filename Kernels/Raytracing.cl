@@ -38,7 +38,7 @@ ray genCameraRay(int i, __global float *cam)
 
 float3 naiveGI(float3 sampleOut,int maxBounce,int triCount,hitInfo H_cam, ray R_cam, material camMat,__read_only image2d_t IBL,const sampler_t sampler,  __global float *mat,
 __constant float *vertex_p, __constant float *vertex_n, __constant float *vertex_uv, __constant int *face_data,__constant float *BVH,
- unsigned int* seed0,  unsigned int* seed1)
+ unsigned int* seed0,  unsigned int* seed1,__global float *envData)
 {
         // camRay is the previous ray
         // bounce ray the new ray that bounce of the surface
@@ -66,8 +66,9 @@ __constant float *vertex_p, __constant float *vertex_n, __constant float *vertex
                             BRDF = BRDF_Lambert(camMat);
                             break;
                         case 2://Glossy GGX
-                            R_bounce.dir = rand_sample_GGX(camMat, R_cam.dir, H_cam.n, seed1, seed0, &invPdfBounce);
+                            R_bounce.dir = rand_hemi_uniform(H_cam.n, seed1, seed0, &invPdfBounce);
                             BRDF = BRDF_GGX(camMat,-R_cam.dir,R_bounce.dir,H_cam.n);
+
                             break;
                         case 3://Glass
                             R_bounce.dir = rand_sample_Glass(R_cam.dir, &invPdfBounce);
@@ -83,7 +84,7 @@ __constant float *vertex_p, __constant float *vertex_n, __constant float *vertex
 
                     //compute attenuation
                     float att = invPdfBounce * fabs(dot(R_bounce.dir, normalize(H_cam.n)));
-
+                    sampleOut = sampleOut * BRDF * att;
                     if (H_bounce.bHit) // hit something solid
                     {
                         //swap bounce and cam ray
@@ -91,7 +92,7 @@ __constant float *vertex_p, __constant float *vertex_n, __constant float *vertex
                         H_cam = H_bounce;
                         camMat = bounceMat;
                         //take bounce contribution into account
-                        sampleOut = sampleOut * BRDF * att;
+                        
                         if (bounceMat.type != 0) //not emissive surface
                         {
                             //max bounce reach, sample is nullified
@@ -109,171 +110,45 @@ __constant float *vertex_p, __constant float *vertex_n, __constant float *vertex
                     } 
                     else // lost in background
                     {
-                        sampleOut = sampleOut*sampleIBL(R_bounce.dir,sampler,IBL);//sample IBL for background
-                        break;
-                    }
-                } 
-                else break;
-            } 
-            else break;
-        }
-        return sampleOut;
-}
+                       
+                       
+                        float3 sunVec = (float3)(1);
+                        sunVec = rotateVec(envData[0]*(3.14f/180.0f),(float3)(1,0,0),sunVec); // x angle
+                        sunVec = rotateVec(envData[1]*(3.14f/180.0f),(float3)(0,1,0),sunVec); // y angle
+                        sunVec = rotateVec(envData[2]*(3.14f/180.0f),(float3)(0,0,1),sunVec); // z angle
 
-
-float3 GI(float3 sampleOut,int maxBounce,int triCount,hitInfo H_cam, ray R_cam, material camMat,__read_only image2d_t IBL,const sampler_t sampler,  __global float *mat,
-__constant float *vertex_p, __constant float *vertex_n, __constant float *vertex_uv, __constant int *face_data,const int lightCount,__constant int *light_data,__constant float *BVH,
- unsigned int* seed0,  unsigned int* seed1)
-{
-        // camRay is the previous ray
-        // bounce ray the new ray that bounce of the surface
-        //for each bounce
-        for (int j = 0; j <= maxBounce; j++) // max bounce limit
-        {
-            if (H_cam.bHit)//hit something
-            {
-                // bounce Ray
-                if (camMat.type != 0)//not lightsource
-                {
-                    // next ray generation
-                    ray R_bounce;
-                    float3 BRDF;
-                    float invPdfBounce;
-                    //sampling method selection depending on current surface material
-                    switch(camMat.type)
-                    {
-                        case 0://emissive
-                            R_bounce.dir = rand_hemi_uniform(H_cam.n, seed1, seed0, &invPdfBounce);
-                            BRDF = (float3)(1,1,1);
-                            break;
-                        case 1://diffuse
-                            R_bounce.dir = rand_hemi_cosine(H_cam.n, seed1, seed0, &invPdfBounce);
-                            BRDF = BRDF_Lambert(camMat);
-                            break;
-                        case 2://Glossy GGX
-                            //R_bounce.dir = rand_sample_GGX(camMat, R_cam.dir, H_cam.n, seed1, seed0, &invPdfBounce);
-/*                             R_bounce.dir = sampleLight(R_cam.o + H_cam.k*R_cam.dir,vertex_p,vertex_n,vertex_uv,face_data,triCount,light_data,
-                    lightCount,seed0,seed1,&invPdfBounce); */
-                    R_bounce.dir = rand_hemi_uniform(H_cam.n, seed1, seed0, &invPdfBounce);
-                            BRDF = BRDF_GGX(camMat,-R_cam.dir,R_bounce.dir,H_cam.n);
-                            break;
-                        case 3://Glass
-                            R_bounce.dir = rand_sample_Glass(R_cam.dir, &invPdfBounce);
-                            BRDF = BRDF_Glass(camMat);
-                            invPdfBounce = (1.0f)/fabs(dot(R_bounce.dir, normalize(H_cam.n)));
-                            break;
-                    }
-                    R_bounce.o = (R_cam.o + (normalize(R_cam.dir) * H_cam.k));
-
-                    // next ray shoot
-                    hitInfo H_bounce = rayTrace(R_bounce, vertex_p, vertex_n, vertex_uv, face_data, triCount,BVH);
-                    material bounceMat = extractMaterial(mat, H_bounce.mat);
-
-                    //compute attenuation
-                    float att = invPdfBounce * fabs(dot(R_bounce.dir, normalize(H_cam.n)));
-
-                    if (H_bounce.bHit) // hit something solid
-                    {
-                        //swap bounce and cam ray
-                        R_cam = R_bounce;
-                        H_cam = H_bounce;
-                        camMat = bounceMat;
-                        //take bounce contribution into account
-                        sampleOut = sampleOut * BRDF * att;
+                        //sun
+                        float3 sunLight = (float3)(0);
+                        ray sunRay; sunRay.o = R_bounce.o;
+                        sunRay.dir = sunVec;
+                        hitInfo H_sun = rayTrace(sunRay, vertex_p, vertex_n, vertex_uv, face_data, triCount,BVH);
+                        material sunMat = extractMaterial(mat, H_sun.mat);
+                        if(!H_sun.bHit && camMat.type != 3)
+                        {
+                            sunLight = envData[3];
+                        }
+                        if(H_sun.bHit && sunMat.type == 3)
+                        {
+                            sunLight = sunMat.color*envData[3];
+                        }
                         
-                        if (bounceMat.type != 0) //not emissive surface
-                        {
-                            //max bounce reach, sample is nullified
-                            if (j == maxBounce) 
-                            {
-                                sampleOut = 0;
-                                break;
-                            }
-                        } 
-                        else //emissive surface
-                        {
-                            if(j>0) sampleOut = sampleOut * bounceMat.roughness;//take alpha as emissive power
-                            break;
-                        }
-                    } 
-                    else // lost in background
-                    {
-                        sampleOut = sampleOut*sampleIBL(R_bounce.dir,sampler,IBL);//sample IBL for background
+                        float3 envLight = sampleIBL(R_bounce.dir,sampler,IBL)*envData[4];
+                        sampleOut = sampleOut*(sunLight + envLight);//sample IBL for background
                         break;
                     }
                 } 
-                else break;
-            } 
-            else break;
-        }
-        return sampleOut;
-}
-
-float3 DirectLight(float3 sampleOut,int maxBounce,int triCount,hitInfo H_cam, ray R_cam, material camMat,__read_only image2d_t IBL,const sampler_t sampler,  __global float *mat,
-__constant float *vertex_p, __constant float *vertex_n, __constant float *vertex_uv, __constant int *face_data,__global float *envData,const int lightCount,__constant int *light_data,__constant float *BVH,
- unsigned int* seed0,  unsigned int* seed1)
-{
-        // camRay is the previous ray
-        // bounce ray the new ray that bounce of the surface
-        //for each bounce
-
-            if (H_cam.bHit)//hit something
-            {
-                if (camMat.type != 0)//not lightsource
-                {
-                    float invPDF = 1.0f;
-                    ray shadRay;
-                    shadRay.o = R_cam.o + H_cam.k*R_cam.dir;
-                    shadRay.dir = sampleLight(R_cam.o + H_cam.k*R_cam.dir,vertex_p,vertex_n,vertex_uv,face_data,triCount,
-                    light_data,lightCount, seed1, seed0,&invPDF,envData);
-
-                    hitInfo H_shadow = rayTrace(shadRay, vertex_p,vertex_n,vertex_uv,face_data,triCount,BVH);
-                    material shadowMat = extractMaterial(mat, H_shadow.mat);
-                    //printf("%f",shadRay.dir.x);
-                    float3 BRDF = (float3)(1.0f);
-                    switch(camMat.type)
-                    {
-                        case 0://emissive
-                            BRDF = (float3)(1,1,1);
-                            break;
-                        case 1://diffuse
-                            BRDF = BRDF_Lambert(camMat);
-                            break;
-                        case 2://Glossy GGX
-                            BRDF = BRDF_GGX(camMat,-R_cam.dir,shadRay.dir,H_cam.n);
-                            break;
-                        case 3://Glass
-                            BRDF = BRDF_Glass(camMat);
-                            //invPDF = (1.0f)/fabs(dot(shadRay.dir, normalize(H_cam.n)));
-                            break;
-                    }
-
-                    if (H_shadow.bHit)
-                    {
-                        if (shadowMat.type != 0)
-                        {
-                            return (float3)(0,0,0);
-                        }
-                        else
-                        {
-                            float3 light = shadowMat.color*shadowMat.roughness;
-                            float nDotWi = fabs(dot(H_shadow.n, shadRay.dir));
-                            
-                            return  length(BRDF)*light*nDotWi*invPDF;
-                        }
-                    }
-                    else
-                    {
-                        float nDotWi = fabs(dot(H_cam.n, shadRay.dir));
-                        return nDotWi*length(BRDF)*invPDF;
-                        //return (float3)(1);
-                    }
-                }
                 else
                 {
-                    return (float3)(0);
-                }
-            }
+                    sampleOut = sampleOut * camMat.roughness;//take alpha as emissive power
+                    break;
+                } 
+            } 
+            else
+            {
+                sampleOut = sampleOut*sampleIBL(R_cam.dir,sampler,IBL)*envData[4];
+                break;
+            } 
+        }
         return sampleOut;
 }
 
@@ -325,33 +200,16 @@ __kernel void Raytracing(__global float *out, __constant float *vertex_p,
         float3 baseColor = (float3)(1.0f);
         float3 GIColor = (float3)(1.0f);
         float3 directColor = (float3)(1.0f);
-        if (H_cam.bHit)
-        {
-            baseColor = camMat.color; //if hit something initialise with base color;
-        }
-        else
-        {
-            baseColor = (float3)(1);
-            directColor = (float3)(0);
-            GIColor = sampleIBL(R_cam.dir,sampler,IBL); // initialise with background
-        } 
 
-/*         baseColor = naiveGI(baseColor,maxBounce,triCount,H_cam,R_cam, camMat,IBL,sampler, mat, vertex_p,
-         vertex_n, vertex_uv, face_data, BVH,&seed0,&seed1); */
-
-        directColor = DirectLight(directColor,maxBounce,triCount, H_cam,  R_cam, camMat, IBL, sampler, mat,
-vertex_p, vertex_n, vertex_uv, face_data,envData,lightCount,light_data,BVH, &seed0, &seed1);
-
-        GIColor = GI(GIColor, maxBounce, triCount, H_cam,  R_cam,  camMat,  IBL,  sampler,mat,
-  vertex_p,   vertex_n,   vertex_uv, face_data,  lightCount,  light_data,  BVH,
- &seed01,   &seed11);
-
-        //baseColor = GIcolor;
-        output = output + baseColor*(directColor+GIColor) ;
+        baseColor = (float3)(1.0f);
+        baseColor = naiveGI(baseColor,maxBounce,triCount,H_cam,R_cam, camMat,IBL,sampler, mat, vertex_p,
+         vertex_n, vertex_uv, face_data, BVH,&seed0,&seed1,envData);
+        output += baseColor;
+        
     }
     //mean
     output = output / (float)(maxSpp);
-
+    
     //-----------------
     // output stage
     //-----------------

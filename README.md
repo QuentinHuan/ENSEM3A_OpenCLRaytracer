@@ -10,7 +10,7 @@ Technologies: PyOpenCL, Tkinter
 
 I plan to implement :
 
--Diffuse, Glossy and Transparent materials [glossy and transparent not working yet]
+-Diffuse, Glossy and Transparent materials [DONE]
 
 -BVH acceleration structure [DONE]
 
@@ -21,4 +21,6 @@ I plan to implement :
 -Image based lighting [DONE]
 
 ![alt text](/screenshots/IBL.png)
+
+![alt text](/screenshots/Serre.png)
 

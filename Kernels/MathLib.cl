@@ -434,7 +434,7 @@ static float3 sampleLight(float3 hitPos,__constant float *vertex_p,__constant fl
         }
         else
         {
-            tri t = makeTri(light_data[r],vertex_p,vertex_n,vertex_uv,face_data,triCount);
+            tri t = makeTri(light_data[0],vertex_p,vertex_n,vertex_uv,face_data,triCount);
             n = (uniformRndInTriangle(t,seed1,seed0) - hitPos);
             n = normalize(n);
             *invPDF = (lightCount+1)*envData[4] * (fmax(dot(t.a.n, -n), 0.0f)) * (Tri_area(t) / pown(length(n),2));
@@ -487,7 +487,14 @@ float3 BRDF_GGX(material m, float3 v, float3 l, float3 n)
     //----------------------||
     //   Diffuse Component
     //----------------------||
-    float3 result = ((float3)(1.0f, 1.0f, 1.0f) * specular);
+
+    float3 kd = (float3)(1.0f) - F;
+    kd = kd * (1.0f - 0.5f);
+
+    float NdotOmega = fmax(dot(n, l), 0.0f);
+    float3 diffuse = kd * m.color / 3.14f;
+
+    float3 result = (diffuse + specular);
 
     return result;
 }

@@ -206,7 +206,7 @@ class Scene(object):
        
         
             #path is the .obj file path
-    def __init__(self,path,buildBVH):
+    def __init__(self,path,buildBVH,BVHCopy):
         self.V_p = []
         self.V_n = []
         self.V_uv = []
@@ -224,10 +224,20 @@ class Scene(object):
         #light triangle list
         self.lightData = []
 
+        self.importSceneGeometry(path)
+
         self.path = path
         self.config = configReader(path.replace(".obj",".ini"),self.materialCount)
+
         self.importMaterialData()
-        self.importSceneGeometry(path)
+
+        #light data building
+        for i in range(0,int(len(self.faceData)/self.faceData_ChunkSize)):
+            matId = self.faceData[i*self.faceData_ChunkSize]
+            if self.materialData[matId*self.materialData_ChunkSize + 0] == 0: #emissive triangle
+                self.lightData.append(i)#add the tri to the list
+
+        self.lightData = np.array(self.lightData).astype(np.int32)
 
         if buildBVH:
             print("start BVH building")
@@ -235,7 +245,8 @@ class Scene(object):
             self.BVH = BVH(self.faceData,self.V_p)
             timeBVH = abs(timeBVH - time())
             print("BVH building done in " + str(timeBVH))
-
+        else:
+            self.BVH = BVHCopy
         #self.test()
 
 
@@ -280,11 +291,7 @@ class Scene(object):
         self.materialCount = matCounter
         print("==> DONE")
         
-        #light data building
-        for i in range(0,int(len(self.faceData)/self.faceData_ChunkSize)):
-            matId = self.faceData[i*self.faceData_ChunkSize]
-            if self.materialData[matId*self.materialData_ChunkSize + 0] == 0: #emissive triangle
-                self.lightData.append(i)#add the tri to the list
+
 
         print("import vertex data :")
         self.V_p = np.array(s.vertices).astype(np.float32)
@@ -297,7 +304,6 @@ class Scene(object):
         self.V_uv = np.reshape(self.V_uv,(1,len(self.V_uv)*2))[0]
 
         self.faceData = np.array(self.faceData).astype(np.int32)
-        self.lightData = np.array(self.lightData).astype(np.int32)
         print("==> DONE\n")
 
     def importMaterialData(self):

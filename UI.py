@@ -60,7 +60,7 @@ def openObjFile(*args):
         f.write("scenePath="+file.name)
         f.close()
 
-        scene = Scene(file.name,False)
+        scene = Scene(file.name,True,scene.BVH)
         return NONE
     else:
         print("no .obj file")
@@ -91,10 +91,11 @@ def updateParameters():
 #render the scene at 'sceneFilePath' using the main script
 def render(*args):
     global RenderImage_Label
+    global scene
     arg_Callback()
     path = parameters["sceneFile"]
     print("ask to renderer scene '" + path + "'")
-    scene = Scene(path,True)
+    scene = Scene(path,False,scene.BVH)
 
     main(scene)
     load = Image.open("output/out.png")
@@ -173,20 +174,6 @@ bg = style.lookup('TFrame', 'background')
 #configReader Object
 f = open("config.ini","r")
 scenePath = f.readline().split("=")[1]
-#load and build scene
-
-scene = Scene(scenePath,False)
-
-#load config
-config = scene.config
-parameters = {}
-updateParameters()
-
-
-
-pickedColor = (0,0,0)
-
-matType = {0 : "emissive",1 : "Diffuse",2 : "Glossy",3 : "Glass"}
 
 #-----------------------------
 #Layout Setup
@@ -210,6 +197,23 @@ left_Top_frame = ttk.Frame(Top_frame,padding="5 5 5 5")
 left_Top_frame.pack(side="left",fill='both',padx=5)
 right_frame = ttk.Labelframe(Top_frame,text="Output Image")
 right_frame.pack(side="right",fill='both',padx=5)
+
+
+#load and build scene
+
+scene = Scene(scenePath,True,None)
+
+#load config
+config = scene.config
+parameters = {}
+updateParameters()
+
+
+
+pickedColor = (0,0,0)
+
+matType = {0 : "emissive",1 : "Diffuse",2 : "Glossy",3 : "Glass"}
+
 
 #-----------------------------------
 #Left Top Side || configuration tab
